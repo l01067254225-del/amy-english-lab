@@ -14,11 +14,13 @@ import {
   removeReadingPassageGroup,
 } from "../../utils/questionBankStorage";
 import MaterialSetEditModal from "../../components/MaterialSetEditModal";
+import ReadingPassagePreview from "../../components/ReadingPassagePreview";
 import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
 import {
   parseQuestionText,
   getTextPasteExample,
   getTextPasteHint,
+  extractReadingPassage,
 } from "../../utils/parseQuestionText";
 import {
   getVocabPasteExample,
@@ -44,7 +46,6 @@ import {
 } from "../../utils/parseWritingText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
-import { truncatePassage } from "../../utils/readingPassage";
 
 export default function TeacherQuestionBankTab() {
   const fileInputRef = useRef(null);
@@ -84,6 +85,11 @@ export default function TeacherQuestionBankTab() {
       }),
     [questions, vocaSets, filterSubject, searchQuery]
   );
+
+  const pastePassagePreview = useMemo(() => {
+    if (pasteSubject !== "reading" || !pasteText.trim()) return "";
+    return extractReadingPassage(pasteText).readingPassage;
+  }, [pasteSubject, pasteText]);
 
   const handleSubjectChange = (nextSubject) => {
     setSubject(nextSubject);
@@ -507,6 +513,7 @@ export default function TeacherQuestionBankTab() {
                       </button>
                     )}
                   </div>
+                  <ReadingPassagePreview passage={passage} />
                 </div>
               )}
 
@@ -724,6 +731,10 @@ export default function TeacherQuestionBankTab() {
           style={pasteTextareaStyle}
         />
 
+        {pasteSubject === "reading" && (
+          <ReadingPassagePreview passage={pastePassagePreview} />
+        )}
+
         <div style={pasteFooterStyle}>
           <p style={pasteHintStyle}>
             {pasteSubject === "vocab"
@@ -889,8 +900,11 @@ function MaterialSetCard({ entry, onEdit, onDelete, onDeleteQuestion }) {
               {(entry.questions ?? []).map((question) => (
                 <li key={question.id} style={setQuestionItemStyle}>
                   <div style={{ flex: 1 }}>
-                    {question.subject === "reading" && question.passage ? (
-                      <p style={setPassagePreviewStyle}>{truncatePassage(question.passage, 120)}</p>
+                    {question.subject === "reading" &&
+                    (question.readingPassage ?? question.passage) ? (
+                      <p style={setPassagePreviewStyle}>
+                        {question.readingPassage ?? question.passage}
+                      </p>
                     ) : null}
                     <strong style={{ color: "#334155" }}>{question.prompt}</strong>
                     <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
@@ -990,7 +1004,7 @@ function ReadingPassageGroupCard({ passage, questions, onDeleteQuestion, onDelet
 
       <div style={passagePreviewBoxStyle}>
         <span style={passagePreviewLabelStyle}>지문 미리보기</span>
-        <p style={passagePreviewTextStyle}>{truncatePassage(passage, 160)}</p>
+        <p style={passagePreviewFullTextStyle}>{passage}</p>
       </div>
 
       <div style={nestedQuestionsStyle}>
@@ -1062,7 +1076,9 @@ function QuestionCard({ question, onDelete }) {
       {showPassageSnippet && (
         <div style={passagePreviewBoxStyle}>
           <span style={passagePreviewLabelStyle}>지문</span>
-          <p style={passagePreviewTextStyle}>{truncatePassage(question.passage, 100)}</p>
+          <p style={passagePreviewFullTextStyle}>
+            {question.readingPassage ?? question.passage}
+          </p>
         </div>
       )}
 
@@ -1459,7 +1475,9 @@ const setPassagePreviewStyle = {
   margin: "0 0 6px",
   fontSize: 12,
   color: "#64748b",
-  lineHeight: 1.6,
+  lineHeight: 1.7,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
 
 const inlineDeleteBtnStyle = {
@@ -1761,6 +1779,15 @@ const passagePreviewTextStyle = {
   fontSize: 13,
   lineHeight: 1.7,
   color: "#475569",
+};
+
+const passagePreviewFullTextStyle = {
+  margin: 0,
+  fontSize: 14,
+  lineHeight: 1.85,
+  color: "#1e293b",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
 
 const nestedQuestionsStyle = {

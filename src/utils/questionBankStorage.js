@@ -74,6 +74,7 @@ function applyReadingFields(item, subject, passage, passageId) {
   return {
     ...item,
     passage: passageText,
+    readingPassage: passageText,
     passageId: passageId || createPassageId(),
   };
 }
@@ -104,9 +105,13 @@ export function normalizeQuestion(question) {
   }
 
   if (question.subject === "reading") {
+    const passageText = String(
+      question.readingPassage ?? question.passage ?? ""
+    ).trim();
     return ensureQuestionSetFields({
       ...base,
-      passage: String(question.passage ?? "").trim(),
+      passage: passageText,
+      readingPassage: passageText,
       passageId: question.passageId || undefined,
     });
   }
@@ -249,7 +254,7 @@ export function addQuestionsBulk(
     question = applyReadingFields(
       question,
       item.subject,
-      item.passage,
+      item.readingPassage ?? item.passage,
       item.passageId
     );
     return normalizeQuestion(question);

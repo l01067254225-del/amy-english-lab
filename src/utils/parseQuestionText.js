@@ -10,6 +10,90 @@ const QUESTION_LINE = /^(?:문제|Q|Question)\s*[:：]?\s*(.+)$/iu;
 const NUMBERED_QUESTION = /^(\d+)\.\s*(.+)$/;
 const PASSAGE_HEADER = /^\[지문\]|^지문\s*[:：]/i;
 
+/** [지문] ... [/지문] — non-greedy capture preserves inner brackets/quotes/newlines */
+const PASSAGE_CLOSED_TAG_REGEX = /\[지문\]\s*([\s\S]*?)\s*\[\/지문\]/i;
+
+/** Leading [ ... ] block — closing bracket on its own line (multiline passage) */
+const PASSAGE_BRACKET_MULTILINE_REGEX = /^\s*\[\s*\n([\s\S]*?)\n\s*\]\s*\n([\s\S]+)$/;
+
+/** Leading [ ... ] block (single pair on one or more lines before questions) */
+const PASSAGE_BRACKET_WRAP_REGEX = /^\s*\[([\s\S]*?)\]\s*\n([\s\S]+)$/;
+
+export function preservePassageText(text) {
+  return String(text ?? "").replace(/^\s+/, "").replace(/\s+$/, "");
+}
+
+export function extractReadingPassage(text) {
+  const source = String(text ?? "").replace(/\r\n/g, "\n");
+  if (!source.trim()) {
+    return { readingPassage: "", remainder: "", matched: false };
+  }
+
+  const closedMatch = source.match(PASSAGE_CLOSED_TAG_REGEX);
+  if (closedMatch) {
+    const readingPassage = preservePassageText(closedMatch[1]);
+    const remainder = source.slice(closedMatch.index + closedMatch[0].length).trim();
+    return { readingPassage, remainder, matched: Boolean(readingPassage) };
+  }
+
+  const openTagMatch = source.match(/^\s*\[지문\]\s*/i);
+  if (openTagMatch) {
+    const afterTag = source.slice(openTagMatch[0].length);
+    const split = splitPassageFromQuestionLines(afterTag);
+    if (split) {
+      return {
+        readingPassage: split.passage,
+        remainder: split.questionsText,
+        matched: Boolean(split.passage),
+      };
+    }
+  }
+
+  const multilineBracket = source.match(PASSAGE_BRACKET_MULTILINE_REGEX);
+  if (multilineBracket && !/^\s*\[지문\]/i.test(source)) {
+    const readingPassage = preservePassageText(multilineBracket[1]);
+    const remainder = multilineBracket[2].trim();
+    if (readingPassage && remainder) {
+      return { readingPassage, remainder, matched: true };
+    }
+  }
+
+  const bracketMatch = source.match(PASSAGE_BRACKET_WRAP_REGEX);
+  if (bracketMatch && !/^\s*\[지문\]/i.test(source)) {
+    const readingPassage = preservePassageText(bracketMatch[1]);
+    const remainder = bracketMatch[2].trim();
+    if (readingPassage && remainder) {
+      return { readingPassage, remainder, matched: true };
+    }
+  }
+
+  const legacy = extractPassageAndQuestionsLegacy(source);
+  if (legacy?.passage) {
+    return {
+      readingPassage: legacy.passage,
+      remainder: legacy.questionsText,
+      matched: true,
+    };
+  }
+
+  return { readingPassage: "", remainder: source.trim(), matched: false };
+}
+
+function splitPassageFromQuestionLines(text) {
+  const lines = text.split("\n");
+  const trimmed = lines.map((line) => line.trim());
+  const firstQuestionIdx = findFirstQuestionLineIndex(trimmed);
+  if (firstQuestionIdx <= 0) {
+    const passage = preservePassageText(text);
+    return passage ? { passage, questionsText: "" } : null;
+  }
+
+  return {
+    passage: preservePassageText(lines.slice(0, firstQuestionIdx).join("\n")),
+    questionsText: lines.slice(firstQuestionIdx).join("\n").trim(),
+  };
+}
+
 function normalizeAnswerToken(token) {
   const value = String(token ?? "").trim();
   const circledIndex = CIRCLED_NUMBERS.indexOf(value);
@@ -46,36 +130,13 @@ function splitQuestionBlocks(text) {
   return grouped.length > 0 ? grouped : [normalized];
 }
 
-function stripPassageHeader(text) {
-  return text
-    .replace(/^\[지문\]\s*/i, "")
-    .replace(/^지문\s*[:：]\s*/i, "")
-    .trim();
-}
-
 function findFirstQuestionLineIndex(lines) {
   return lines.findIndex((line) => NUMBERED_QUESTION.test(line.trim()));
 }
 
-function extractPassageAndQuestions(text) {
+function extractPassageAndQuestionsLegacy(text) {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   const lines = normalized.split("\n");
-
-  const explicitPassageIdx = lines.findIndex((line) => PASSAGE_HEADER.test(line.trim()));
-  if (explicitPassageIdx >= 0) {
-    const afterHeader = lines.slice(explicitPassageIdx);
-    const firstQuestionInRest = findFirstQuestionLineIndex(
-      afterHeader.map((line) => line.trim())
-    );
-    if (firstQuestionInRest > 0) {
-      const passageLines = afterHeader.slice(0, firstQuestionInRest);
-      const questionLines = afterHeader.slice(firstQuestionInRest);
-      return {
-        passage: stripPassageHeader(passageLines.join("\n")),
-        questionsText: questionLines.join("\n"),
-      };
-    }
-  }
 
   const trimmedLines = lines.map((line) => line.trim());
   const firstQuestionIdx = findFirstQuestionLineIndex(trimmedLines);
@@ -83,7 +144,12 @@ function extractPassageAndQuestions(text) {
 
   const passageLines = lines.slice(0, firstQuestionIdx);
   const questionLines = lines.slice(firstQuestionIdx);
-  const passage = stripPassageHeader(passageLines.join("\n").trim());
+  const passage = preservePassageText(
+    passageLines
+      .join("\n")
+      .replace(/^\[지문\]\s*/i, "")
+      .replace(/^지문\s*[:：]\s*/i, "")
+  );
 
   if (passage.length < 40 && !PASSAGE_HEADER.test(passageLines.join("\n"))) {
     return null;
@@ -162,11 +228,14 @@ function parseBlock(block, defaultSubject, readingContext = null) {
     return { error: "문제 문장을 찾지 못했습니다." };
   }
 
+  const passageText = readingContext?.readingPassage ?? readingContext?.passage ?? "";
+
   const readingFields =
-    readingContext && readingContext.passage
+    readingContext && passageText
       ? {
           subject: "reading",
-          passage: readingContext.passage,
+          passage: passageText,
+          readingPassage: passageText,
           passageId: readingContext.passageId,
         }
       : { subject };
@@ -212,19 +281,20 @@ function parseBlock(block, defaultSubject, readingContext = null) {
 }
 
 function parseReadingText(text, defaultSubject) {
-  const extracted = extractPassageAndQuestions(text);
-  if (!extracted || !extracted.passage || !extracted.questionsText.trim()) {
+  const { readingPassage, remainder, matched } = extractReadingPassage(text);
+  if (!matched || !readingPassage || !remainder.trim()) {
     return null;
   }
 
   const passageId = createPassageId();
   const readingContext = {
     subject: "reading",
-    passage: extracted.passage,
+    passage: readingPassage,
+    readingPassage,
     passageId,
   };
 
-  const blocks = splitQuestionBlocks(extracted.questionsText);
+  const blocks = splitQuestionBlocks(remainder);
   const items = [];
   const errors = [];
 
@@ -238,11 +308,17 @@ function parseReadingText(text, defaultSubject) {
   });
 
   if (items.length === 0) return null;
-  return { items, errors };
+  return { items, errors, readingPassage };
 }
 
 export function parseQuestionText(text, { defaultSubject = "grammar" } = {}) {
-  if (defaultSubject === "reading" || PASSAGE_HEADER.test(text)) {
+  const shouldTryReading =
+    defaultSubject === "reading" ||
+    PASSAGE_HEADER.test(text) ||
+    PASSAGE_CLOSED_TAG_REGEX.test(text) ||
+    /^\s*\[[\s\S]*?\]\s*\n/m.test(text);
+
+  if (shouldTryReading) {
     const readingResult = parseReadingText(text, defaultSubject);
     if (readingResult && readingResult.items.length > 0) {
       return readingResult;
@@ -268,7 +344,10 @@ export function parseQuestionText(text, { defaultSubject = "grammar" } = {}) {
 export function getTextPasteExample(subject = "grammar") {
   if (subject === "reading") {
     return `[지문]
-Tom is a good student. Every morning, he goes to school. He likes bread and drinks milk at breakfast. His best friend is Amy.
+Tom is a good student. Every morning, he goes to school.
+He likes bread and drinks milk at breakfast. His best friend is Amy.
+"Hello!" he said to her with a smile.
+[/지문]
 
 1. Where does Tom go every morning?
 ① home
@@ -303,7 +382,7 @@ Tom is a good student. Every morning, he goes to school. He likes bread and drin
 
 export function getTextPasteHint(subject = "grammar") {
   if (subject === "reading") {
-    return "Reading: 상단 긴 글은 지문, 아래 1. 2. 번호 문항은 개별 문제로 자동 분리됩니다. [지문] 표시 또는 빈 줄 구분을 권장합니다.";
+    return "Reading: [지문] ... [/지문] 또는 [지문 전체] 형태로 입력하면 지문이 하나의 블록으로 저장됩니다. 아래 1. 2. 번호 문항은 개별 문제로 분리됩니다.";
   }
   return "①~⑤ 또는 1)~5) 보기, '정답: N' 형식을 자동 인식합니다. 문항은 빈 줄로 구분하세요.";
 }

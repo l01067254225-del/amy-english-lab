@@ -42,14 +42,16 @@ export function serializeSetContent(entry) {
   }
 
   if (entry.subject === "reading") {
-    const passage = String(questions[0]?.passage ?? "").trim();
+    const passage = String(
+      questions[0]?.readingPassage ?? questions[0]?.passage ?? ""
+    ).trim();
     const blocks = questions.map((question, index) => {
       if (question.type === "objective" && ensureOptions(question.options).length >= 2) {
         return serializeObjectiveBlock(question, index);
       }
       return serializeSubjectiveBlock(question, index);
     });
-    return `[지문]\n${passage}\n\n${blocks.join("\n\n")}`;
+    return `[지문]\n${passage}\n[/지문]\n\n${blocks.join("\n\n")}`;
   }
 
   return questions

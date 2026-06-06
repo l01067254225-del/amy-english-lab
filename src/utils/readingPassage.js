@@ -14,8 +14,9 @@ export function buildQuestionDisplayList(questions) {
   const items = [];
 
   questions.forEach((question) => {
+    const passageText = question.readingPassage ?? question.passage;
     const isGroupedReading =
-      question.subject === "reading" && question.passageId && question.passage;
+      question.subject === "reading" && question.passageId && passageText;
 
     if (isGroupedReading) {
       if (seenPassageIds.has(question.passageId)) return;
@@ -27,7 +28,8 @@ export function buildQuestionDisplayList(questions) {
       items.push({
         type: "readingGroup",
         passageId: question.passageId,
-        passage: question.passage,
+        passage: passageText,
+        readingPassage: passageText,
         questions: groupQuestions,
       });
       return;
