@@ -39,14 +39,16 @@ export function validateResultSubmission(record) {
     throw new ExamSubmissionValidationError(EXAM_SUBMISSION_INCOMPLETE_MESSAGE);
   }
 
-  const answers = record?.answers;
+  const answers = record?.answers ?? record?.responses;
   if (!answers || typeof answers !== "object") {
     throw new ExamSubmissionValidationError(EXAM_SUBMISSION_INCOMPLETE_MESSAGE);
   }
 
-  const unanswered = details.filter(
-    (detail) => !isAnswerProvided(answers[detail.questionId])
-  );
+  const unanswered = details.filter((detail) => {
+    const fromDetail = detail.userAnswer ?? detail.studentAnswer;
+    const fromMap = answers[detail.questionId];
+    return !isAnswerProvided(fromDetail) && !isAnswerProvided(fromMap);
+  });
   if (unanswered.length > 0) {
     throw new ExamSubmissionValidationError(EXAM_SUBMISSION_INCOMPLETE_MESSAGE);
   }
@@ -56,6 +58,6 @@ export function validateResultSubmission(record) {
 
 export function stripAnswersFromResultRecord(record) {
   if (!record || typeof record !== "object") return record;
-  const { answers, ...rest } = record;
+  const { answers, responses, ...rest } = record;
   return rest;
 }

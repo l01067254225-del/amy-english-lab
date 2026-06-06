@@ -1,7 +1,10 @@
 import * as localStorageApi from "../utils/resultsStorage";
 import {
+  enrichResultRecordForSave,
+  normalizeStoredResults,
+} from "../utils/resultAnswerStorage";
+import {
   ExamSubmissionValidationError,
-  stripAnswersFromResultRecord,
   validateResultSubmission,
 } from "../utils/examSubmissionValidation";
 import { ensureArray } from "../utils/safeData";
@@ -18,48 +21,26 @@ export function getSyncMode() {
 }
 
 export async function fetchAllResults() {
-  return ensureArray(localStorageApi.loadResults());
+  return normalizeStoredResults(localStorageApi.loadResults());
 }
 
 export async function replaceResult(resultId, record) {
-  validateResultSubmission(record);
+  const prepared = enrichResultRecordForSave({ ...record, id: resultId });
+  validateResultSubmission(prepared);
 
-  const payload = {
-    studentId: record.studentId,
-    studentName: record.studentName,
-    testId: record.testId,
-    testTitle: record.testTitle,
-    score: record.score,
-    total: record.total,
-    submittedAt: record.submittedAt ?? new Date().toISOString(),
-    details: ensureArray(record.details),
-    attemptCount: Number(record.attemptCount ?? 1),
-    id: resultId,
-    ...(record.clinicRetest ? { clinicRetest: record.clinicRetest } : {}),
-  };
-
-  localStorageApi.replaceResult(resultId, stripAnswersFromResultRecord(payload));
-  return ensureArray(localStorageApi.loadResults());
+  localStorageApi.replaceResult(resultId, prepared);
+  return normalizeStoredResults(localStorageApi.loadResults());
 }
 
 export async function saveResult(record) {
-  validateResultSubmission(record);
-
-  const payload = {
-    studentId: record.studentId,
-    studentName: record.studentName,
-    testId: record.testId,
-    testTitle: record.testTitle,
-    score: record.score,
-    total: record.total,
-    submittedAt: record.submittedAt,
-    details: ensureArray(record.details),
-    attemptCount: Number(record.attemptCount ?? 1),
+  const prepared = enrichResultRecordForSave({
+    ...record,
     id: record.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-  };
+  });
+  validateResultSubmission(prepared);
 
-  localStorageApi.saveResult(stripAnswersFromResultRecord(payload));
-  return ensureArray(localStorageApi.loadResults());
+  localStorageApi.saveResult(prepared);
+  return normalizeStoredResults(localStorageApi.loadResults());
 }
 
 export async function deleteResult(resultId) {

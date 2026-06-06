@@ -1,3 +1,5 @@
+import { enrichResultRecordForSave, normalizeStoredResults } from "./resultAnswerStorage";
+
 export const STORAGE_KEY = "amy-test-results";
 
 export function loadResults() {
@@ -5,15 +7,16 @@ export function loadResults() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return normalizeStoredResults(Array.isArray(parsed) ? parsed : []);
   } catch {
     return [];
   }
 }
 
 export function saveResult(record) {
+  const prepared = enrichResultRecordForSave(record);
   const results = loadResults();
-  const next = [record, ...results];
+  const next = [prepared, ...results.filter((item) => item.id !== prepared.id)];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
@@ -23,18 +26,18 @@ export function clearResults() {
 }
 
 export function replaceResult(resultId, record) {
+  const prepared = enrichResultRecordForSave({ ...record, id: resultId });
   const results = loadResults();
   const index = results.findIndex((item) => item.id === resultId);
-  const nextRecord = { ...record, id: resultId };
 
   if (index < 0) {
-    const next = [nextRecord, ...results];
+    const next = [prepared, ...results];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     return next;
   }
 
   const next = [...results];
-  next[index] = nextRecord;
+  next[index] = prepared;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }

@@ -1,5 +1,6 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
+import { isAnswerEmpty, resolveDetailStudentAnswer } from "./resultAnswerStorage";
 import { ensureArray } from "./safeData";
 
 function getExamByTestId(testId) {
@@ -8,13 +9,23 @@ function getExamByTestId(testId) {
 }
 
 export function formatStoredUserAnswer(question, userAnswer) {
-  const raw = String(userAnswer ?? "").trim();
-  if (!raw) return "(미입력)";
+  if (isAnswerEmpty(userAnswer)) return "(미입력)";
+
+  const raw = String(userAnswer).trim();
 
   if (question?.type === "objective") {
-    const optionIndex = Number(raw) - 1;
-    const optionText = ensureArray(question.options)[optionIndex];
-    if (optionText) return `${raw}번 · ${optionText}`;
+    const numericIndex = Number(raw) - 1;
+    if (Number.isFinite(numericIndex) && numericIndex >= 0) {
+      const optionText = ensureArray(question.options)[numericIndex];
+      if (optionText) return `${raw}번 · ${optionText}`;
+    }
+
+    const matchedIndex = ensureArray(question.options).findIndex(
+      (option) => String(option).trim() === raw
+    );
+    if (matchedIndex >= 0) {
+      return `${matchedIndex + 1}번 · ${question.options[matchedIndex]}`;
+    }
   }
 
   return raw;
@@ -35,7 +46,7 @@ export function getRetestReviewItems(result) {
         num: detail.num,
         questionId: detail.questionId,
         question,
-        userAnswer: detail.userAnswer ?? "",
+        userAnswer: resolveDetailStudentAnswer(detail, result),
         correctAnswer: formatQuestionAnswer(question),
       };
     })
@@ -58,19 +69,26 @@ export function mergeExamRetestResult(previousResult, newRecord) {
     const previousDetail = prevByQuestionId.get(newDetail.questionId);
     const wasWrong = previousDetail && previousDetail.correct === false;
     const nowCorrect = newDetail.correct === true;
+    const userAnswer = resolveDetailStudentAnswer(newDetail, newRecord);
+
+    const baseDetail = {
+      ...newDetail,
+      userAnswer,
+      studentAnswer: userAnswer,
+    };
 
     if (!wasWrong) {
-      return { ...newDetail };
+      return baseDetail;
     }
 
     return {
-      ...newDetail,
+      ...baseDetail,
       retested: true,
       examRetest: {
         passed: nowCorrect,
         correct: nowCorrect,
-        userAnswer: newDetail.userAnswer ?? "",
-        previousUserAnswer: previousDetail.userAnswer ?? "",
+        userAnswer,
+        previousUserAnswer: resolveDetailStudentAnswer(previousDetail, previousResult),
         submittedAt: newRecord.submittedAt,
         attemptNumber: Number(newRecord.attemptCount ?? 1),
       },
