@@ -196,7 +196,7 @@ function buildReadingFields(readingContext) {
   };
 }
 
-function parseBlock(block, defaultSubject, readingContext = null) {
+function parseBlock(block, defaultSubject, readingContext = null, order = null) {
   const { body, answer: answerSection } = splitBodyAndAnswer(block);
   if (!body && !answerSection) return null;
 
@@ -280,6 +280,15 @@ function parseBlock(block, defaultSubject, readingContext = null) {
   }
 
   const readingFields = buildReadingFields(readingContext);
+  const resolvedOrder =
+    order != null && Number.isFinite(Number(order)) && Number(order) > 0
+      ? Number(order)
+      : extractQuestionNumber(block);
+
+  const orderField =
+    resolvedOrder != null && Number.isFinite(resolvedOrder) && resolvedOrder > 0
+      ? { order: resolvedOrder }
+      : {};
 
   if (options.length >= 2) {
     const numericAnswer = normalizeAnswerToken(answer);
@@ -288,6 +297,7 @@ function parseBlock(block, defaultSubject, readingContext = null) {
       item: {
         type: "objective",
         ...readingFields,
+        ...orderField,
         subject: readingFields.subject ?? subject,
         prompt,
         answer: resolvedAnswer,
@@ -300,6 +310,7 @@ function parseBlock(block, defaultSubject, readingContext = null) {
     item: {
       type: "subjective",
       ...readingFields,
+      ...orderField,
       subject: readingFields.subject ?? subject,
       prompt,
       answer,
@@ -350,7 +361,12 @@ function parseReadingText(text, defaultSubject) {
           }
         : null;
 
-    const result = parseBlock(block, defaultSubject, readingContext);
+    const result = parseBlock(
+      block,
+      defaultSubject,
+      readingContext,
+      questionNumbers[index] ?? index + 1
+    );
     if (result?.item) {
       items.push(result.item);
     }

@@ -17,6 +17,7 @@ import {
   suggestSetName,
 } from "./examSetStorage";
 import { normalizeWritingFields } from "./writingQuestion";
+import { isReadingSubject, resolveQuestionOrder, sortReadingQuestions } from "./readingQuestionOrder";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
@@ -113,12 +114,14 @@ export function normalizeQuestion(question) {
       question.passageNumber != null && question.passageNumber !== ""
         ? Number(question.passageNumber)
         : undefined;
+    const orderValue = resolveQuestionOrder(question);
     return ensureQuestionSetFields({
       ...base,
       passage: passageText,
       readingPassage: passageText,
       passageId: question.passageId || undefined,
       ...(Number.isFinite(passageNumber) ? { passageNumber } : {}),
+      ...(orderValue > 0 ? { order: orderValue } : {}),
     });
   }
 
@@ -143,6 +146,12 @@ export function loadQuestionBank() {
   const raw = ensureArray(readJson(QUESTION_BANK_KEY));
   const migrated = runQuestionBankMigration(raw);
   return migrated.map(normalizeQuestion);
+}
+
+export function loadReadingQuestions() {
+  return sortReadingQuestions(
+    loadQuestionBank().filter((question) => question.subject === "reading")
+  );
 }
 
 export function addQuestion({
@@ -179,6 +188,20 @@ export function addQuestion({
     }
   }
 
+  const activePassageId =
+    subject === "reading" ? passageId || createPassageId() : null;
+
+  const readingOrder =
+    subject === "reading"
+      ? existing
+          .filter(
+            (q) =>
+              q.subject === "reading" &&
+              (q.passageId === activePassageId || getQuestionSetId(q) === resolvedSetId)
+          )
+          .reduce((max, q) => Math.max(max, resolveQuestionOrder(q)), 0) + 1
+      : undefined;
+
   let item = applySetFieldsToQuestion(
     {
       id: createQuestionId(),
@@ -192,6 +215,7 @@ export function addQuestion({
           : [],
       level: String(level ?? "").trim(),
       createdAt: new Date().toISOString(),
+      ...(readingOrder ? { order: readingOrder } : {}),
     },
     { setId: resolvedSetId, setName: resolvedSetName, isAutoSet }
   );
@@ -203,7 +227,7 @@ export function addQuestion({
     });
   }
 
-  item = applyReadingFields(item, subject, passage, passageId);
+  item = applyReadingFields(item, subject, passage, activePassageId);
   item = normalizeQuestion(item);
 
   const next = [item, ...existing];
@@ -246,6 +270,12 @@ export function addQuestionsBulk(
             : [],
         level: String(item.level ?? "").trim(),
         createdAt: new Date().toISOString(),
+        order:
+          item.order != null && item.order !== ""
+            ? Number(item.order)
+            : item.subject === "reading"
+              ? index + 1
+              : undefined,
       },
       { setId: resolvedSetId, setName: resolvedSetName, isAutoSet: false }
     );
@@ -325,6 +355,16 @@ export function loadExamSets() {
   return ensureArray(readJson(EXAM_SETS_KEY));
 }
 
+function prepareExamQuestions(questions, { setSource, materialSource } = {}) {
+  const normalized = ensureArray(questions).map(normalizeQuestion);
+  const subject =
+    setSource?.subject ?? materialSource?.subject ?? normalized[0]?.subject ?? "";
+  if (isReadingSubject(subject) || normalized.every((q) => q.subject === "reading")) {
+    return sortReadingQuestions(normalized);
+  }
+  return normalized;
+}
+
 export function addExamSet({
   title,
   questions,
@@ -334,13 +374,14 @@ export function addExamSet({
   materialSource = null,
   setSource = null,
 }) {
+  const preparedQuestions = prepareExamQuestions(questions, { setSource, materialSource });
   const item = {
     id: `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: title.trim(),
     targetLevel: String(targetLevel ?? "").trim(),
     testDate: String(testDate ?? "").trim(),
-    questionIds: questions.map((q) => q.id),
-    questions: questions.map(normalizeQuestion),
+    questionIds: preparedQuestions.map((q) => q.id),
+    questions: preparedQuestions,
     createdAt: new Date().toISOString(),
     ...(vocaSource ? { vocaSource } : {}),
     ...(materialSource ? { materialSource } : {}),
@@ -357,7 +398,13 @@ export function updateExamSet(examId, updates) {
   if (index < 0) return list;
 
   const current = list[index];
-  const questions = ensureArray(updates.questions ?? current.questions).map(normalizeQuestion);
+  const questions = prepareExamQuestions(
+    ensureArray(updates.questions ?? current.questions),
+    {
+      setSource: updates.setSource ?? current.setSource,
+      materialSource: updates.materialSource ?? current.materialSource,
+    }
+  );
 
   const nextItem = {
     id: examId,

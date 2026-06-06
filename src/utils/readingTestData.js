@@ -1,6 +1,6 @@
 import { getQuestionsByTestId } from "../data/questions";
 import { flattenQuestions } from "./grade";
-import { loadQuestionBank } from "./questionBankStorage";
+import { loadReadingQuestions } from "./questionBankStorage";
 
 function mapBankQuestion(question) {
   if (question.type === "objective") {
@@ -21,9 +21,7 @@ function mapBankQuestion(question) {
 }
 
 function buildFromQuestionBank() {
-  const readingItems = loadQuestionBank().filter(
-    (item) => item.subject === "reading" && item.passage?.trim()
-  );
+  const readingItems = loadReadingQuestions().filter((item) => item.passage?.trim());
   if (readingItems.length === 0) return null;
 
   const groups = new Map();
@@ -39,7 +37,8 @@ function buildFromQuestionBank() {
     groups.get(passageId).questions.push(mapBankQuestion(item));
   });
 
-  return [...groups.values()][0];
+  const firstGroup = [...groups.values()][0];
+  return firstGroup;
 }
 
 function buildFromBuiltinReading() {

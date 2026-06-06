@@ -1,4 +1,5 @@
 import { getSubjectLabel } from "./questionBankStorage";
+import { sortReadingQuestions } from "./readingQuestionOrder";
 import { drawQuestionsFromPool } from "./examSetStorage";
 import { buildVocaExamQuestions } from "./vocaExamBuilder";
 import { ensureArray } from "./safeData";
@@ -88,7 +89,12 @@ export function buildExamPayloadFromSelection({
     };
   }
 
-  const questionPool = selectedSetsData.flatMap((entry) => entry.questions ?? []);
+  const isReadingExam = filterSubject === "reading";
+  const questionPool = isReadingExam
+    ? selectedSetsData.flatMap((entry) =>
+        sortReadingQuestions(entry.questions ?? [])
+      )
+    : selectedSetsData.flatMap((entry) => entry.questions ?? []);
   if (questionPool.length === 0) {
     return { ok: false, error: "선택한 자료에 포함된 문제가 없습니다." };
   }
@@ -99,7 +105,9 @@ export function buildExamPayloadFromSelection({
     };
   }
 
-  const selectedQuestions = drawQuestionsFromPool(questionPool, requestedCount);
+  const selectedQuestions = drawQuestionsFromPool(questionPool, requestedCount, {
+    subject: filterSubject,
+  });
 
   return {
     ok: true,

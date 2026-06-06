@@ -22,6 +22,8 @@ import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { loadExamSets } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
+import { resolveExamSubject } from "../../utils/examSetBuilder";
+import { sortReadingQuestions } from "../../utils/readingQuestionOrder";
 import { shuffleArray } from "../../utils/shuffle";
 
 const REFRESH_WARNING =
@@ -43,12 +45,17 @@ export default function StudentExamTake({
     [examId]
   );
 
+  const examSubject = resolveExamSubject(exam);
+
   const orderedQuestions = useMemo(() => {
     const questions = ensureArray(exam?.questions);
     if (!questions.length) return [];
+    if (examSubject === "reading") {
+      return sortReadingQuestions(questions);
+    }
     if (isRetest) return shuffleArray(questions);
     return questions;
-  }, [exam, examId, isRetest]);
+  }, [exam, examId, isRetest, examSubject]);
 
   const examView = useMemo(() => {
     if (!orderedQuestions.length) return null;

@@ -1,4 +1,9 @@
 import { getSubjectLabel } from "./questionBankStorage";
+import {
+  drawReadingQuestionsFromPool,
+  isReadingSubject,
+  sortReadingQuestions,
+} from "./readingQuestionOrder";
 import { ensureArray } from "./safeData";
 import { shuffleArray } from "./shuffle";
 
@@ -308,6 +313,9 @@ export function buildSetCatalog({
     });
 
     grouped.forEach((group) => {
+      if (group.subject === "reading") {
+        group.questions = sortReadingQuestions(group.questions);
+      }
       entries.push({
         setId: group.setId,
         setName: group.setName,
@@ -413,6 +421,9 @@ export function buildSetNameList({
     });
 
     byName.forEach((entry) => {
+      if (entry.subject === "reading") {
+        entry.questions = sortReadingQuestions(entry.questions);
+      }
       entries.push({ ...entry, count: entry.questions.length });
     });
   }
@@ -433,9 +444,13 @@ export function collectQuestionIdsFromSets(catalog, selectedSetIds) {
   return [...questionIds];
 }
 
-export function drawQuestionsFromPool(pool, drawCount) {
+export function drawQuestionsFromPool(pool, drawCount, { subject = "" } = {}) {
   const list = ensureArray(pool);
   if (list.length === 0) return [];
+
+  if (isReadingSubject(subject)) {
+    return drawReadingQuestionsFromPool(list, drawCount);
+  }
 
   const shuffled = shuffleArray(list);
   const requested = Number(drawCount);
