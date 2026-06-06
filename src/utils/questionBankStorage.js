@@ -1,3 +1,5 @@
+import { MAX_MCQ_OPTIONS } from "./mcqOptions";
+
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
 
@@ -44,10 +46,14 @@ export function createQuestionId() {
 
 export function normalizeQuestion(question) {
   const type = question.type === "objective" ? "objective" : "subjective";
+  const options =
+    type === "objective" && Array.isArray(question.options)
+      ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())
+      : [];
   return {
     ...question,
     type,
-    options: type === "objective" && Array.isArray(question.options) ? question.options : [],
+    options,
   };
 }
 

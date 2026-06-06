@@ -9,9 +9,9 @@ import {
   loadQuestionBank,
   removeQuestion,
 } from "../../utils/questionBankStorage";
-import { parseQuestionCsv } from "../../utils/parseQuestionCsv";
-
-const EMPTY_OPTIONS = ["", "", "", ""];
+import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
+import { parseQuestionText, getTextPasteExample } from "../../utils/parseQuestionText";
+import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 
 export default function TeacherQuestionBankTab() {
   const fileInputRef = useRef(null);
@@ -20,12 +20,15 @@ export default function TeacherQuestionBankTab() {
   const [subject, setSubject] = useState("vocab");
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
-  const [options, setOptions] = useState(EMPTY_OPTIONS);
+  const [options, setOptions] = useState(EMPTY_MCQ_OPTIONS);
   const [formError, setFormError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSubject, setFilterSubject] = useState("all");
   const [isDragOver, setIsDragOver] = useState(false);
   const [csvUploading, setCsvUploading] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteSubject, setPasteSubject] = useState("grammar");
+  const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
 
   const filteredQuestions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -47,7 +50,7 @@ export default function TeacherQuestionBankTab() {
   const resetForm = () => {
     setPrompt("");
     setAnswer("");
-    setOptions(EMPTY_OPTIONS);
+    setOptions(EMPTY_MCQ_OPTIONS);
     setFormError("");
   };
 
@@ -61,12 +64,11 @@ export default function TeacherQuestionBankTab() {
 
     if (questionType === "objective") {
       if (options.some((opt) => !opt.trim())) {
-        setFormError("객관식 보기 1~4번을 모두 입력해 주세요.");
+        setFormError("객관식 보기 1~5번을 모두 입력해 주세요.");
         return;
       }
-      const answerNum = Number(answer);
-      if (!Number.isInteger(answerNum) || answerNum < 1 || answerNum > 4) {
-        setFormError("정답은 1~4 사이의 보기 번호로 입력해 주세요.");
+      if (!isValidMcqAnswer(answer, options.length)) {
+        setFormError("정답은 1~5 사이의 보기 번호로 입력해 주세요.");
         return;
       }
     } else if (!answer.trim()) {
@@ -125,6 +127,36 @@ export default function TeacherQuestionBankTab() {
     processCsvFile(e.target.files?.[0]);
   };
 
+  const handlePasteAnalyze = () => {
+    if (!pasteText.trim()) {
+      alert("붙여넣을 텍스트를 입력해 주세요.");
+      return;
+    }
+
+    setPasteAnalyzing(true);
+    try {
+      const { items, errors } = parseQuestionText(pasteText, {
+        defaultSubject: pasteSubject,
+      });
+
+      if (items.length === 0) {
+        const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+        alert(`등록할 문항을 찾지 못했습니다.${detail}`);
+        return;
+      }
+
+      const next = addQuestionsBulk(items);
+      setQuestions(next);
+      setPasteText("");
+
+      const errorNote =
+        errors.length > 0 ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}` : "";
+      alert(`성공적으로 ${items.length}개의 문항이 등록되었습니다.${errorNote}`);
+    } finally {
+      setPasteAnalyzing(false);
+    }
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
@@ -136,7 +168,7 @@ export default function TeacherQuestionBankTab() {
       <style>{`
         @keyframes qbSlideDown {
           from { opacity: 0; transform: translateY(-8px); max-height: 0; }
-          to { opacity: 1; transform: translateY(0); max-height: 320px; }
+          to { opacity: 1; transform: translateY(0); max-height: 420px; }
         }
         @keyframes qbFadeIn {
           from { opacity: 0; transform: translateY(6px); }
@@ -192,7 +224,7 @@ export default function TeacherQuestionBankTab() {
 
               {questionType === "objective" && (
                 <div className="qb-options-panel" style={{ gridColumn: "1 / -1" }}>
-                  <p style={optionsLabelStyle}>보기 입력 (1~4번)</p>
+                  <p style={optionsLabelStyle}>보기 입력 (1~5번)</p>
                   <div style={optionsGridStyle}>
                     {options.map((opt, index) => (
                       <label
@@ -226,14 +258,14 @@ export default function TeacherQuestionBankTab() {
                   onChange={(e) => setAnswer(e.target.value)}
                   placeholder={
                     questionType === "objective"
-                      ? "보기 번호 입력 (1 ~ 4)"
+                      ? "보기 번호 입력 (1 ~ 5)"
                       : "예: Seoul / I go to school."
                   }
                   style={inputStyle}
                 />
                 <span style={hintStyle}>
                   {questionType === "objective"
-                    ? "객관식은 정답 보기 번호(1, 2, 3, 4)를 입력하세요."
+                    ? "객관식은 정답 보기 번호(1, 2, 3, 4, 5)를 입력하세요."
                     : "주관식은 정답 텍스트를 그대로 입력하세요."}
                 </span>
               </label>
@@ -279,9 +311,9 @@ export default function TeacherQuestionBankTab() {
             <p style={dropDescStyle}>
               파일을 여기에 끌어다 놓거나 클릭하여 선택하세요
             </p>
-            <code style={csvFormatStyle}>단어,정답,과목</code>
+            <code style={csvFormatStyle}>{parseQuestionCsvRowPreview()}</code>
             <p style={dropExampleStyle}>
-              예: apple,사과,Voca &nbsp;·&nbsp; run,달리다,Writing
+              주관식: apple,사과,Voca &nbsp;·&nbsp; 객관식(4지): 문제,2,Grammar,A,B,C,D
             </p>
             <input
               ref={fileInputRef}
@@ -304,6 +336,53 @@ export default function TeacherQuestionBankTab() {
           </div>
         </section>
       </div>
+
+      {/* ── 텍스트 붙여넣기 일괄 등록 ── */}
+      <section style={panelStyle}>
+        <div style={panelHeaderStyle}>
+          <div>
+            <h2 style={panelTitleStyle}>텍스트 복사 붙여넣기로 등록</h2>
+            <p style={panelDescStyle}>
+              한글(HWP)·PDF에서 복사한 문제 텍스트를 붙여넣고 자동 분석 등록
+            </p>
+          </div>
+          <label style={{ ...fieldLabelStyle, minWidth: 140, marginBottom: 0 }}>
+            기본 과목
+            <select
+              value={pasteSubject}
+              onChange={(e) => setPasteSubject(e.target.value)}
+              style={{ ...selectStyle, marginTop: 0 }}
+            >
+              {SUBJECT_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <textarea
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          placeholder={getTextPasteExample()}
+          style={pasteTextareaStyle}
+        />
+
+        <div style={pasteFooterStyle}>
+          <p style={pasteHintStyle}>
+            ①~⑤ 또는 1)~5) 보기, &apos;정답: N&apos; 형식을 자동 인식합니다. 문항은 빈 줄로 구분하세요.
+          </p>
+          <button
+            type="button"
+            onClick={handlePasteAnalyze}
+            disabled={pasteAnalyzing}
+            style={analyzeBtnStyle}
+          >
+            {pasteAnalyzing ? "분석 중..." : "AI 분석 등록"}
+          </button>
+        </div>
+      </section>
 
       {/* ── 문제 목록 ── */}
       <section style={panelStyle}>
@@ -347,7 +426,7 @@ export default function TeacherQuestionBankTab() {
               {questions.length === 0 ? "등록된 문제가 없습니다." : "검색 결과가 없습니다."}
             </p>
             <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 14 }}>
-              위에서 문제를 추가하거나 CSV 파일을 업로드해 보세요.
+              위에서 문제를 추가하거나 CSV·텍스트 붙여넣기로 등록해 보세요.
             </p>
           </div>
         ) : (
@@ -431,7 +510,11 @@ function QuestionCard({ question, onDelete }) {
               ...(isObjective ? typeBadgeObjectiveStyle : typeBadgeSubjectiveStyle),
             }}
           >
-            {isObjective ? "객관식" : "주관식"}
+            {isObjective
+              ? question.options.length >= 5
+                ? "객관식 · 5지"
+                : "객관식 · 4지"
+              : "주관식"}
           </span>
         </div>
         <button type="button" onClick={() => onDelete(question.id)} style={deleteBtnStyle}>
@@ -869,4 +952,50 @@ const toggleBtnActiveStyle = {
   background: "white",
   color: "#0f172a",
   boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+};
+
+const pasteTextareaStyle = {
+  width: "100%",
+  minHeight: 220,
+  padding: "16px 18px",
+  borderRadius: 14,
+  border: "1px solid #e2e8f0",
+  boxSizing: "border-box",
+  fontSize: 14,
+  lineHeight: 1.7,
+  color: "#0f172a",
+  background: "#fafbfc",
+  resize: "vertical",
+  fontFamily: "Consolas, 'Malgun Gothic', monospace",
+};
+
+const pasteFooterStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
+  marginTop: 14,
+  flexWrap: "wrap",
+};
+
+const pasteHintStyle = {
+  margin: 0,
+  flex: 1,
+  minWidth: 240,
+  fontSize: 13,
+  color: "#94a3b8",
+  lineHeight: 1.6,
+};
+
+const analyzeBtnStyle = {
+  padding: "12px 20px",
+  borderRadius: 12,
+  border: "none",
+  background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 14,
+  boxShadow: "0 8px 20px rgba(124, 58, 237, 0.25)",
+  whiteSpace: "nowrap",
 };
