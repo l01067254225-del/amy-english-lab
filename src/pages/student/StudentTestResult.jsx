@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../../components/SiteHeader";
+import IncorrectAnswerTools from "../../components/IncorrectAnswerTools";
 import StudentLevelCompareDashboard from "../../components/StudentLevelCompareDashboard";
 import { fetchAllResults, formatDate } from "../../services/resultsApi";
 import { getStudentLevel } from "../../utils/levelStats";
@@ -7,6 +8,7 @@ import { ensureArray } from "../../utils/safeData";
 
 export default function StudentTestResult({ student, resultId, onBack, onLogout }) {
   const studentKey = student?.id ?? "";
+  const studentName = student?.name ?? "학생";
   const studentLevel = student?.level || getStudentLevel(studentKey);
   const [savedResults, setSavedResults] = useState([]);
 
@@ -35,12 +37,17 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
     [savedResults, resultId]
   );
 
+  const percent = useMemo(() => {
+    if (!result || !result.total) return 0;
+    return Math.round((Number(result.score) / Number(result.total)) * 100);
+  }, [result]);
+
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
         <SiteHeader
           title="AMY ENGLISH LAB"
-          subtitle={`${student?.name ?? "학생"} · 시험 결과`}
+          subtitle={`${studentName} · 시험 결과`}
           onLogout={onLogout}
         />
 
@@ -54,6 +61,13 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
           </div>
         ) : (
           <div style={cardStyle}>
+            <IncorrectAnswerTools
+              result={result}
+              studentName={studentName}
+              showPrint
+              showClinic={false}
+            />
+
             <div style={resultHeaderStyle}>
               <div>
                 <h2 style={{ margin: "0 0 6px", fontSize: 22, color: "#0f172a" }}>
@@ -63,9 +77,7 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
                   {formatDate(result.submittedAt)} · {result.score}/{result.total}점
                 </p>
               </div>
-              <div style={scoreBadgeStyle}>
-                {Math.round((result.score / result.total) * 100)}%
-              </div>
+              <div style={scoreBadgeStyle}>{percent}%</div>
             </div>
 
             <StudentLevelCompareDashboard
@@ -89,6 +101,14 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
                 </li>
               ))}
             </ul>
+
+            <IncorrectAnswerTools
+              result={result}
+              studentName={studentName}
+              showPrint={false}
+              showClinic
+              mountPrintSheet={false}
+            />
           </div>
         )}
       </div>
@@ -134,6 +154,7 @@ const resultHeaderStyle = {
   alignItems: "flex-start",
   gap: 16,
   marginBottom: 8,
+  marginTop: 16,
   flexWrap: "wrap",
 };
 

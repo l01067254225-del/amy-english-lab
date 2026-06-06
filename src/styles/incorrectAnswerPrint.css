@@ -1,0 +1,44 @@
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm;
+  }
+
+  body.incorrect-note-printing * {
+    visibility: hidden !important;
+  }
+
+  body.incorrect-note-printing #incorrect-note-print-root,
+  body.incorrect-note-printing #incorrect-note-print-root * {
+    visibility: visible !important;
+  }
+
+  body.incorrect-note-printing #incorrect-note-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: white !important;
+  }
+
+  .incorrect-note-no-print {
+    display: none !important;
+  }
+
+  .incorrect-note-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .incorrect-note-item {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+}

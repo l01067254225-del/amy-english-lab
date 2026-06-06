@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import IncorrectAnswerNoteModal from "../../components/IncorrectAnswerNoteModal";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
+import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
 import { formatDate } from "../../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../../utils/examHelpers";
 import { LEVEL_OPTIONS, formatLevelLabel } from "../../utils/levels";
@@ -23,6 +25,7 @@ export default function TeacherResultsTab({
   const [levelFilter, setLevelFilter] = useState("all");
   const [nameQuery, setNameQuery] = useState("");
   const [printTarget, setPrintTarget] = useState(null);
+  const [incorrectTarget, setIncorrectTarget] = useState(null);
 
   const safeStudents = ensureArray(students);
   const safeResults = ensureArray(results);
@@ -148,7 +151,7 @@ export default function TeacherResultsTab({
                   <th style={thTdStyle}>시험 제목</th>
                   <th style={thTdStyle}>과목</th>
                   <th style={thTdStyle}>점수 / 만점</th>
-                  <th style={{ ...thTdStyle, textAlign: "right", width: 120 }}></th>
+                  <th style={{ ...thTdStyle, textAlign: "right", minWidth: 200 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -169,13 +172,24 @@ export default function TeacherResultsTab({
                       </span>
                     </td>
                     <td style={{ ...thTdStyle, textAlign: "right" }}>
-                      <button
-                        type="button"
-                        onClick={() => setPrintTarget(row)}
-                        style={printRowBtnStyle}
-                      >
-                        성적표 인쇄
-                      </button>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setPrintTarget(row)}
+                          style={printRowBtnStyle}
+                        >
+                          성적표 인쇄
+                        </button>
+                        {countIncorrectAnswers(row) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setIncorrectTarget(row)}
+                            style={incorrectRowBtnStyle}
+                          >
+                            오답 노트
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -190,6 +204,14 @@ export default function TeacherResultsTab({
           result={printRow}
           studentLevel={printRow.level === "—" ? "" : printRow.level}
           onClose={() => setPrintTarget(null)}
+        />
+      )}
+
+      {incorrectTarget && (
+        <IncorrectAnswerNoteModal
+          result={incorrectTarget}
+          studentName={incorrectTarget.studentName}
+          onClose={() => setIncorrectTarget(null)}
         />
       )}
     </>
@@ -221,4 +243,11 @@ const printRowBtnStyle = {
   fontWeight: 700,
   cursor: "pointer",
   whiteSpace: "nowrap",
+};
+
+const incorrectRowBtnStyle = {
+  ...printRowBtnStyle,
+  borderColor: "#cbd5e1",
+  background: "white",
+  color: "#334155",
 };
