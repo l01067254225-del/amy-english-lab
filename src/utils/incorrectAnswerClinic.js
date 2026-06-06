@@ -1,3 +1,4 @@
+import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { loadExamSets } from "./questionBankStorage";
 import { ensureArray } from "./safeData";
 
@@ -15,8 +16,7 @@ export function getIncorrectQuestionItems(result) {
   return details
     .filter((detail) => detail && detail.correct === false)
     .map((detail) => {
-      const index = Number(detail.num) - 1;
-      const question = questions[index];
+      const question = resolveQuestionForDetail(questions, detail);
       if (!question) return null;
       return {
         num: detail.num,

@@ -1,4 +1,5 @@
 import { getExamByTestId } from "./incorrectAnswerClinic";
+import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatTestDate, getTodayDateString } from "./levels";
 import { getSubjectLabel } from "./questionBankStorage";
 import { ensureArray } from "./safeData";
@@ -45,7 +46,9 @@ export function computeSubjectScoresFromResult(result) {
     const subject = question?.subject;
     if (!SUBJECT_KEYS.includes(subject)) return;
     buckets[subject].total += 1;
-    const detail = details.find((item) => item.num === index + 1);
+    const detail =
+      details.find((item) => item.questionId === question.id) ??
+      details.find((item) => item.num === index + 1);
     if (detail?.correct) buckets[subject].earned += 1;
   });
 

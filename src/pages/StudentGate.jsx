@@ -9,6 +9,7 @@ export default function StudentGate({ onBack }) {
   const [view, setView] = useState("dashboard");
   const [activeExamId, setActiveExamId] = useState(null);
   const [activeResultId, setActiveResultId] = useState(null);
+  const [retestResultId, setRetestResultId] = useState(null);
 
   useEffect(() => {
     if (!session) {
@@ -50,12 +51,21 @@ export default function StudentGate({ onBack }) {
       <StudentExamTake
         student={session}
         examId={activeExamId}
+        isRetest={Boolean(retestResultId)}
+        retestResultId={retestResultId}
         onBack={() => {
+          if (retestResultId) {
+            setActiveExamId(null);
+            setView("result");
+            return;
+          }
           setActiveExamId(null);
+          setRetestResultId(null);
           setView("dashboard");
         }}
         onSubmitted={(resultId) => {
           setActiveResultId(resultId);
+          setRetestResultId(null);
           setView("result");
         }}
         onLogout={handleLogout}
@@ -70,7 +80,13 @@ export default function StudentGate({ onBack }) {
         resultId={activeResultId}
         onBack={() => {
           setActiveResultId(null);
+          setRetestResultId(null);
           setView("dashboard");
+        }}
+        onRetest={(examId, resultId) => {
+          setRetestResultId(resultId);
+          setActiveExamId(examId);
+          setView("exam");
         }}
         onLogout={handleLogout}
       />
@@ -82,6 +98,7 @@ export default function StudentGate({ onBack }) {
       student={session}
       onLogout={handleLogout}
       onStartExam={(examId) => {
+        setRetestResultId(null);
         setActiveExamId(examId);
         setView("exam");
       }}

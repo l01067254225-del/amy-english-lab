@@ -22,6 +22,23 @@ export function clearResults() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+export function replaceResult(resultId, record) {
+  const results = loadResults();
+  const index = results.findIndex((item) => item.id === resultId);
+  const nextRecord = { ...record, id: resultId };
+
+  if (index < 0) {
+    const next = [nextRecord, ...results];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }
+
+  const next = [...results];
+  next[index] = nextRecord;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
 export function formatDate(isoString) {
   if (!isoString) return "—";
   const date = new Date(isoString);

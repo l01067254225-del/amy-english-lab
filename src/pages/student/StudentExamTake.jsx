@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import QuestionCard from "../../components/QuestionCard";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
-import { saveResult } from "../../services/resultsApi";
+import { fetchAllResults, replaceResult, saveResult } from "../../services/resultsApi";
 import {
   buildExamTakeView,
   shouldShowReadingPassage,
@@ -11,10 +11,13 @@ import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { loadExamSets } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
+import { shuffleArray } from "../../utils/shuffle";
 
 export default function StudentExamTake({
   student,
   examId,
+  isRetest = false,
+  retestResultId = null,
   onBack,
   onSubmitted,
   onLogout,
@@ -26,10 +29,17 @@ export default function StudentExamTake({
     [examId]
   );
 
+  const orderedQuestions = useMemo(() => {
+    const questions = ensureArray(exam?.questions);
+    if (!questions.length) return [];
+    if (isRetest) return shuffleArray(questions);
+    return questions;
+  }, [exam, examId, isRetest]);
+
   const examView = useMemo(() => {
-    if (!exam) return null;
-    return buildExamTakeView(exam.questions);
-  }, [exam]);
+    if (!orderedQuestions.length) return null;
+    return buildExamTakeView(orderedQuestions);
+  }, [orderedQuestions]);
 
   const flatQuestions = examView?.questions ?? [];
   const total = flatQuestions.length;
@@ -55,10 +65,14 @@ export default function StudentExamTake({
     const details = flatQuestions.map((q, idx) => {
       const earned = gradeQuestion(q, answers[q.id]);
       score += earned;
-      return { num: idx + 1, correct: earned === 1 };
+      return {
+        num: idx + 1,
+        questionId: q.id,
+        correct: earned === 1,
+      };
     });
 
-    const record = {
+    const baseRecord = {
       studentId: studentKey,
       studentName: student.name || studentKey,
       testId: exam.id,
@@ -71,14 +85,26 @@ export default function StudentExamTake({
 
     setSaving(true);
     try {
-      const next = await saveResult(record);
+      let attemptCount = 1;
+      if (isRetest && retestResultId) {
+        const all = await fetchAllResults();
+        const existing = all.find((item) => item.id === retestResultId);
+        attemptCount = Number(existing?.attemptCount ?? 1) + 1;
+      }
+
+      const record = { ...baseRecord, attemptCount };
+      const next =
+        isRetest && retestResultId
+          ? await replaceResult(retestResultId, record)
+          : await saveResult(record);
+
       const mine = next.filter(
         (r) => r.studentId === studentKey || r.studentName === studentKey
       );
-      const latest = mine[0];
+      const targetId = isRetest && retestResultId ? retestResultId : mine[0]?.id;
       setSubmitted(true);
-      if (latest?.id) {
-        onSubmitted?.(latest.id);
+      if (targetId) {
+        onSubmitted?.(targetId);
       }
     } catch (error) {
       console.error(error);
@@ -107,13 +133,20 @@ export default function StudentExamTake({
       <div style={{ maxWidth: isReadingMode ? 1280 : 960, margin: "0 auto" }}>
         <SiteHeader
           title="AMY ENGLISH LAB"
-          subtitle={`${exam.title} · ${exam.targetLevel} · ${formatTestDate(exam.testDate)}`}
+          subtitle={`${exam.title} · ${exam.targetLevel} · ${formatTestDate(exam.testDate)}${isRetest ? " · 재시험" : ""}`}
           onLogout={onLogout}
         />
 
         <button type="button" onClick={onBack} style={backBtnStyle}>
-          ← 대시보드로 돌아가기
+          ← {isRetest ? "결과 화면으로" : "대시보드로 돌아가기"}
         </button>
+
+        {isRetest && (
+          <p style={retestBannerStyle}>
+            재시험 모드 · 문항 순서가 무작위로 섞였습니다. 커트라인 통과 후 오답 노트를
+            이용할 수 있습니다.
+          </p>
+        )}
 
         <div
           style={{
@@ -163,7 +196,7 @@ export default function StudentExamTake({
                     disabled={saving}
                     style={submitBtnStyle}
                   >
-                    {saving ? "저장 중..." : "제출"}
+                    {saving ? "저장 중..." : isRetest ? "재시험 제출" : "제출"}
                   </button>
                 ) : (
                   <button type="button" onClick={reset} style={secondaryBtnStyle}>
@@ -196,6 +229,18 @@ const backBtnStyle = {
   fontWeight: 700,
   fontSize: 14,
   cursor: "pointer",
+};
+
+const retestBannerStyle = {
+  margin: "0 0 16px",
+  padding: "12px 14px",
+  borderRadius: 10,
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
+  color: "#92400e",
+  fontSize: 14,
+  fontWeight: 600,
+  lineHeight: 1.6,
 };
 
 const submitBtnStyle = {

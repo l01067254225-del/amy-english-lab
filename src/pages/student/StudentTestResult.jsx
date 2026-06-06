@@ -3,13 +3,25 @@ import SiteHeader from "../../components/SiteHeader";
 import IncorrectAnswerTools from "../../components/IncorrectAnswerTools";
 import StudentLevelCompareDashboard from "../../components/StudentLevelCompareDashboard";
 import { fetchAllResults, formatDate } from "../../services/resultsApi";
+import {
+  CUTOFF_SCORES,
+  evaluateCutoff,
+  getCutoffWarningMessage,
+} from "../../utils/cutoffPolicy";
 import { getStudentLevel } from "../../utils/levelStats";
+import { SUBJECT_SMS_LABELS } from "../../utils/scoreAnalytics";
 import { ensureArray } from "../../utils/safeData";
 
-export default function StudentTestResult({ student, resultId, onBack, onLogout }) {
+export default function StudentTestResult({
+  student,
+  resultId,
+  onBack,
+  onLogout,
+  onRetest,
+}) {
   const studentKey = student?.id ?? "";
   const studentName = student?.name ?? "학생";
-  const studentLevel = student?.level || getStudentLevel(studentKey);
+  const studentLevel = student.level || getStudentLevel(studentKey);
   const [savedResults, setSavedResults] = useState([]);
 
   const loadMyResults = useCallback(async () => {
@@ -37,10 +49,17 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
     [savedResults, resultId]
   );
 
+  const cutoff = useMemo(() => evaluateCutoff(result), [result]);
+
   const percent = useMemo(() => {
     if (!result || !result.total) return 0;
     return Math.round((Number(result.score) / Number(result.total)) * 100);
   }, [result]);
+
+  const handleRetest = () => {
+    if (!result?.testId) return;
+    onRetest?.(result.testId, result.id);
+  };
 
   return (
     <div style={pageStyle}>
@@ -61,12 +80,14 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
           </div>
         ) : (
           <div style={cardStyle}>
-            <IncorrectAnswerTools
-              result={result}
-              studentName={studentName}
-              showPrint
-              showClinic={false}
-            />
+            {cutoff.passed && (
+              <IncorrectAnswerTools
+                result={result}
+                studentName={studentName}
+                showPrint
+                showClinic={false}
+              />
+            )}
 
             <div style={resultHeaderStyle}>
               <div>
@@ -75,40 +96,88 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
                 </h2>
                 <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
                   {formatDate(result.submittedAt)} · {result.score}/{result.total}점
+                  {result.attemptCount > 1 ? ` · ${result.attemptCount}회차` : ""}
                 </p>
               </div>
-              <div style={scoreBadgeStyle}>{percent}%</div>
+              <div
+                style={{
+                  ...scoreBadgeStyle,
+                  ...(cutoff.needsRetest
+                    ? { background: "#fef2f2", color: "#b91c1c" }
+                    : {}),
+                }}
+              >
+                {percent}%
+              </div>
             </div>
 
-            <StudentLevelCompareDashboard
-              studentId={studentKey}
-              result={result}
-              level={studentLevel}
-            />
+            {cutoff.testedSubjects.length > 0 && (
+              <div style={subjectScoreGridStyle}>
+                {cutoff.testedSubjects.map((subject) => {
+                  const score = cutoff.subjectScores[subject];
+                  const passed = score >= CUTOFF_SCORES[subject];
+                  return (
+                    <div key={subject} style={subjectScoreCardStyle}>
+                      <span style={subjectScoreLabelStyle}>{SUBJECT_SMS_LABELS[subject]}</span>
+                      <strong
+                        style={{
+                          ...subjectScoreValueStyle,
+                          color: passed ? "#047857" : "#b91c1c",
+                        }}
+                      >
+                        {score}점
+                      </strong>
+                      <span style={subjectCutoffStyle}>
+                        기준 {CUTOFF_SCORES[subject]}점 · {passed ? "통과" : "재시험"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-            <h3 style={detailTitleStyle}>문항별 결과</h3>
-            <ul style={detailListStyle}>
-              {ensureArray(result.details).map((d) => (
-                <li
-                  key={d.num}
-                  style={{
-                    ...detailItemStyle,
-                    color: d.correct ? "#047857" : "#b91c1c",
-                  }}
-                >
-                  <span>Q{d.num}</span>
-                  <span style={{ fontWeight: 800 }}>{d.correct ? "O" : "X"}</span>
-                </li>
-              ))}
-            </ul>
+            {cutoff.needsRetest ? (
+              <div style={warningBoxStyle}>
+                <p style={{ margin: "0 0 14px", lineHeight: 1.7, fontWeight: 600 }}>
+                  {getCutoffWarningMessage(cutoff.failedSubjects)}
+                </p>
+                <button type="button" onClick={handleRetest} style={retestBtnStyle}>
+                  재시험 응시하기
+                </button>
+              </div>
+            ) : (
+              <>
+                <StudentLevelCompareDashboard
+                  studentId={studentKey}
+                  result={result}
+                  level={studentLevel}
+                />
 
-            <IncorrectAnswerTools
-              result={result}
-              studentName={studentName}
-              showPrint={false}
-              showClinic
-              mountPrintSheet={false}
-            />
+                <h3 style={detailTitleStyle}>문항별 결과</h3>
+                <ul style={detailListStyle}>
+                  {ensureArray(result.details).map((d) => (
+                    <li
+                      key={`${d.num}-${d.questionId ?? "legacy"}`}
+                      style={{
+                        ...detailItemStyle,
+                        color: d.correct ? "#047857" : "#b91c1c",
+                      }}
+                    >
+                      <span>Q{d.num}</span>
+                      <span style={{ fontWeight: 800 }}>{d.correct ? "O" : "X"}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <IncorrectAnswerTools
+                  result={result}
+                  studentName={studentName}
+                  showPrint={false}
+                  showClinic
+                  mountPrintSheet={false}
+                />
+              </>
+            )}
           </div>
         )}
       </div>
@@ -165,6 +234,60 @@ const scoreBadgeStyle = {
   color: "#2563eb",
   fontSize: 24,
   fontWeight: 800,
+};
+
+const subjectScoreGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+  margin: "16px 0",
+};
+
+const subjectScoreCardStyle = {
+  padding: "12px 14px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+const subjectScoreLabelStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const subjectScoreValueStyle = {
+  fontSize: 20,
+  fontWeight: 800,
+};
+
+const subjectCutoffStyle = {
+  fontSize: 11,
+  color: "#94a3b8",
+  fontWeight: 600,
+};
+
+const warningBoxStyle = {
+  marginTop: 20,
+  padding: "18px 20px",
+  borderRadius: 12,
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  color: "#991b1b",
+};
+
+const retestBtnStyle = {
+  padding: "14px 22px",
+  borderRadius: 10,
+  border: "none",
+  background: "#dc2626",
+  color: "white",
+  fontWeight: 800,
+  fontSize: 15,
+  cursor: "pointer",
 };
 
 const detailTitleStyle = {
