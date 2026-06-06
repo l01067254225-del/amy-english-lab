@@ -39,7 +39,11 @@ export function gradeQuestion(question, userAnswer) {
     case "subjective":
     case "meaning":
     case "spelling":
+    case "writing":
     case "fill":
+      if (question.type === "writing") {
+        return normalizeSentence(userAnswer) === normalizeSentence(question.answer) ? 1 : 0;
+      }
       return user === answer ? 1 : 0;
     default:
       return 0;

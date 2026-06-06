@@ -2,6 +2,7 @@ import { getTodayDateString } from "./levels";
 import { MAX_MCQ_OPTIONS } from "./mcqOptions";
 import { createPassageId } from "./readingPassage";
 import { ensureArray } from "./safeData";
+import { normalizeWritingFields } from "./writingQuestion";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
@@ -63,19 +64,21 @@ function applyReadingFields(item, subject, passage, passageId) {
   };
 }
 
+function resolveQuestionType(question) {
+  if (question.type === "objective") return "objective";
+  if (question.type === "meaning" || question.type === "spelling") return question.type;
+  if (question.type === "writing" || question.subject === "writing") return "writing";
+  return "subjective";
+}
+
 export function normalizeQuestion(question) {
-  const type =
-    question.type === "objective"
-      ? "objective"
-      : question.type === "meaning" || question.type === "spelling"
-        ? question.type
-        : "subjective";
+  const type = resolveQuestionType(question);
   const options =
     type === "objective" && Array.isArray(question.options)
       ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())
       : [];
 
-  const base = {
+  let base = {
     ...question,
     type,
     options,
@@ -84,6 +87,10 @@ export function normalizeQuestion(question) {
     materialSetName:
       String(question.materialSetName ?? question.setName ?? "").trim() || undefined,
   };
+
+  if (type === "writing") {
+    base = normalizeWritingFields(base);
+  }
 
   if (question.subject === "reading") {
     return {
@@ -110,8 +117,10 @@ export function addQuestion({
   passage = "",
   passageId = null,
   level = "",
+  givenWords = "",
 }) {
-  const normalizedType = type === "objective" ? "objective" : "subjective";
+  const normalizedType =
+    subject === "writing" ? "writing" : type === "objective" ? "objective" : "subjective";
   let item = {
     id: createQuestionId(),
     type: normalizedType,
@@ -125,6 +134,14 @@ export function addQuestion({
     level: String(level ?? "").trim(),
     createdAt: new Date().toISOString(),
   };
+
+  if (normalizedType === "writing") {
+    item = normalizeWritingFields({
+      ...item,
+      givenWords: String(givenWords ?? "").trim(),
+    });
+  }
+
   item = applyReadingFields(item, subject, passage, passageId);
 
   const next = [item, ...loadQuestionBank()];
@@ -138,12 +155,7 @@ export function addQuestionsBulk(items, { materialSetId = "", materialSetName = 
   const sharedMaterialSetName = String(materialSetName ?? "").trim() || undefined;
 
   const newItems = items.map((item, index) => {
-    const type =
-      item.type === "objective"
-        ? "objective"
-        : item.type === "meaning" || item.type === "spelling"
-          ? item.type
-          : "subjective";
+    const type = resolveQuestionType(item);
     let question = {
       id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
       type,
@@ -160,13 +172,21 @@ export function addQuestionsBulk(items, { materialSetId = "", materialSetName = 
         String(item.materialSetName ?? sharedMaterialSetName ?? "").trim() || undefined,
       createdAt: new Date().toISOString(),
     };
+
+    if (type === "writing") {
+      question = normalizeWritingFields({
+        ...question,
+        givenWords: String(item.givenWords ?? "").trim(),
+      });
+    }
+
     question = applyReadingFields(
       question,
       item.subject,
       item.passage,
       item.passageId
     );
-    return question;
+    return normalizeQuestion(question);
   });
   const next = [...newItems, ...loadQuestionBank()];
   writeJson(QUESTION_BANK_KEY, next);
@@ -193,6 +213,9 @@ export function removeQuestionsByMaterialSet(materialSetId) {
 
 export function formatQuestionAnswer(question) {
   const q = normalizeQuestion(question);
+  if (q.type === "writing") {
+    return q.answer;
+  }
   if (q.type === "objective") {
     const index = Number(q.answer) - 1;
     const optionText = q.options[index];

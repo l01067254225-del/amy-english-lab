@@ -90,7 +90,12 @@ export function buildMaterialCatalog({
         questionIds: group.questions.map((question) => question.id),
         preview: group.questions
           .slice(0, 2)
-          .map((question) => String(question.prompt ?? "").slice(0, 36))
+          .map((question) => {
+            if (question.subject === "writing" && question.givenWords) {
+              return `${String(question.prompt ?? "").slice(0, 20)} · ${question.givenWords}`;
+            }
+            return String(question.prompt ?? "").slice(0, 36);
+          })
           .join(" / "),
         createdAt: group.questions[0]?.createdAt,
       });

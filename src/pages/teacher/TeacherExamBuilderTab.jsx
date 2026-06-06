@@ -9,6 +9,7 @@ import {
   SUBJECT_OPTIONS,
 } from "../../utils/questionBankStorage";
 import { formatTestDate, getTodayDateString, LEVEL_OPTIONS } from "../../utils/levels";
+import { shuffleArray } from "../../utils/shuffle";
 import { buildVocaExamQuestions, getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
 import {
   buildMaterialCatalog,
@@ -246,7 +247,7 @@ export default function TeacherExamBuilderTab() {
         return;
       }
 
-      const selectedQuestions = questionBank.filter(
+      let selectedQuestions = questionBank.filter(
         (q) =>
           selectedMaterialQuestionIds.includes(q.id) &&
           q.level === targetLevel &&
@@ -256,6 +257,10 @@ export default function TeacherExamBuilderTab() {
       if (selectedQuestions.length === 0) {
         setBuildError("선택한 자료에 포함된 문제가 없습니다.");
         return;
+      }
+
+      if (filterSubject === "writing") {
+        selectedQuestions = shuffleArray(selectedQuestions);
       }
 
       const next = addExamSet({
@@ -288,9 +293,15 @@ export default function TeacherExamBuilderTab() {
       return;
     }
 
+    const finalQuestions =
+      selectedQuestions.some((q) => q.subject === "writing") &&
+      selectedQuestions.every((q) => q.subject === "writing")
+        ? shuffleArray(selectedQuestions)
+        : selectedQuestions;
+
     const next = addExamSet({
       title: examTitle.trim(),
-      questions: selectedQuestions,
+      questions: finalQuestions,
       targetLevel,
       testDate,
     });

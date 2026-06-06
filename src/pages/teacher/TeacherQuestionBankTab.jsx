@@ -34,6 +34,11 @@ import {
   getMaterialNamePlaceholder,
   suggestMaterialSetName,
 } from "../../utils/materialSetStorage";
+import {
+  getWritingPasteExample,
+  getWritingPasteHint,
+  parseWritingEntries,
+} from "../../utils/parseWritingText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 import {
@@ -50,6 +55,7 @@ export default function TeacherQuestionBankTab() {
   const [passage, setPassage] = useState("");
   const [passageId, setPassageId] = useState(null);
   const [prompt, setPrompt] = useState("");
+  const [givenWords, setGivenWords] = useState("");
   const [answer, setAnswer] = useState("");
   const [options, setOptions] = useState(EMPTY_MCQ_OPTIONS);
   const [formError, setFormError] = useState("");
@@ -64,6 +70,7 @@ export default function TeacherQuestionBankTab() {
   const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
 
   const isReading = subject === "reading";
+  const isWriting = subject === "writing";
 
   const filteredQuestions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -75,6 +82,7 @@ export default function TeacherQuestionBankTab() {
         q.answer,
         q.passage,
         q.materialSetName,
+        q.givenWords,
         getSubjectLabel(q.subject),
         ...(q.options ?? []),
       ]
@@ -111,6 +119,11 @@ export default function TeacherQuestionBankTab() {
       setPassage("");
       setPassageId(null);
     }
+    if (nextSubject === "writing") {
+      setQuestionType("subjective");
+    }
+    setGivenWords("");
+    setFormError("");
   };
 
   const handlePassageChange = (value) => {
@@ -133,6 +146,7 @@ export default function TeacherQuestionBankTab() {
 
   const resetForm = () => {
     setPrompt("");
+    setGivenWords("");
     setAnswer("");
     setOptions(EMPTY_MCQ_OPTIONS);
     setFormError("");
@@ -142,11 +156,20 @@ export default function TeacherQuestionBankTab() {
     e.preventDefault();
 
     if (!prompt.trim()) {
-      setFormError("문제 내용을 입력해 주세요.");
+      setFormError(isWriting ? "문제 본문을 입력해 주세요." : "문제 내용을 입력해 주세요.");
       return;
     }
 
-    if (questionType === "objective") {
+    if (isWriting) {
+      if (!givenWords.trim()) {
+        setFormError("주어진 단어를 입력해 주세요.");
+        return;
+      }
+      if (!answer.trim()) {
+        setFormError("정답(모범 답안)을 입력해 주세요.");
+        return;
+      }
+    } else if (questionType === "objective") {
       if (options.some((opt) => !opt.trim())) {
         setFormError("객관식 보기 1~5번을 모두 입력해 주세요.");
         return;
@@ -179,11 +202,12 @@ export default function TeacherQuestionBankTab() {
       subject,
       prompt,
       answer,
-      type: questionType,
+      type: isWriting ? "writing" : questionType,
       options: questionType === "objective" ? options : [],
       passage: isReading ? passage : "",
       passageId: activePassageId,
       level: questionLevel,
+      givenWords: isWriting ? givenWords : "",
     });
     setQuestions(next);
     resetForm();
@@ -260,6 +284,7 @@ export default function TeacherQuestionBankTab() {
     setPasteAnalyzing(true);
     try {
       const isVocabPaste = pasteSubject === "vocab";
+      const isWritingPaste = pasteSubject === "writing";
 
       if (isVocabPaste) {
         const { entries, errors } = parseVocabEntries(pasteText);
@@ -292,6 +317,41 @@ export default function TeacherQuestionBankTab() {
 
         alert(
           `시험 자료 "${setName}" — Voca 단어 ${words.length}개가 세트로 등록되었습니다!${errorNote}`
+        );
+        return;
+      }
+
+      if (isWritingPaste) {
+        const { entries, errors } = parseWritingEntries(pasteText);
+
+        if (entries.length === 0) {
+          const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+          alert(`등록할 Writing 문항을 찾지 못했습니다.${detail}`);
+          return;
+        }
+
+        const resolvedMaterialName =
+          materialSetName.trim() || suggestMaterialSetName("writing", questionLevel);
+        const materialSetId = createMaterialSetId();
+
+        const next = addQuestionsBulk(
+          entries.map((item) => ({ ...item, level: questionLevel })),
+          {
+            materialSetId,
+            materialSetName: resolvedMaterialName,
+          }
+        );
+        setQuestions(next);
+        setPasteText("");
+        setMaterialSetName("");
+
+        const errorNote =
+          errors.length > 0
+            ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
+            : "";
+
+        alert(
+          `시험 자료 "${resolvedMaterialName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
         );
         return;
       }
@@ -371,9 +431,13 @@ export default function TeacherQuestionBankTab() {
           <div style={panelHeaderStyle}>
             <div>
               <h2 style={panelTitleStyle}>문제 추가</h2>
-              <p style={panelDescStyle}>주관식·객관식 문항을 바로 등록하세요</p>
+              <p style={panelDescStyle}>
+                {isWriting
+                  ? "서술형 영작 문항을 등록하세요"
+                  : "주관식·객관식 문항을 바로 등록하세요"}
+              </p>
             </div>
-            <TypeToggle value={questionType} onChange={setQuestionType} />
+            {!isWriting && <TypeToggle value={questionType} onChange={setQuestionType} />}
           </div>
 
           <form onSubmit={handleAdd}>
@@ -437,6 +501,43 @@ export default function TeacherQuestionBankTab() {
                 </div>
               )}
 
+              {isWriting ? (
+                <>
+                  <label style={{ ...fieldLabelStyle, gridColumn: "1 / -1" }}>
+                    문제 본문
+                    <input
+                      type="text"
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      placeholder='예: "나는 매일 학교에 간다."'
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label style={{ ...fieldLabelStyle, gridColumn: "1 / -1" }}>
+                    주어진 단어
+                    <input
+                      type="text"
+                      value={givenWords}
+                      onChange={(e) => setGivenWords(e.target.value)}
+                      placeholder="예: I, go, school, every day"
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label style={{ ...fieldLabelStyle, gridColumn: "1 / -1" }}>
+                    정답 (모범 답안)
+                    <input
+                      type="text"
+                      value={answer}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      placeholder="예: I go to school every day."
+                      style={inputStyle}
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
               <label style={{ ...fieldLabelStyle, gridColumn: "1 / -1" }}>
                 {isReading ? "문제 (지문 하위 문항)" : "문제 (단어 / 문장)"}
                 <input
@@ -495,6 +596,8 @@ export default function TeacherQuestionBankTab() {
                     : "주관식은 정답 텍스트를 그대로 입력하세요."}
                 </span>
               </label>
+                </>
+              )}
             </div>
 
             {formError && <p style={errorStyle}>{formError}</p>}
@@ -605,7 +708,9 @@ export default function TeacherQuestionBankTab() {
           placeholder={
             pasteSubject === "vocab"
               ? getVocabPasteExample()
-              : getTextPasteExample(pasteSubject)
+              : pasteSubject === "writing"
+                ? getWritingPasteExample()
+                : getTextPasteExample(pasteSubject)
           }
           style={pasteTextareaStyle}
         />
@@ -614,7 +719,9 @@ export default function TeacherQuestionBankTab() {
           <p style={pasteHintStyle}>
             {pasteSubject === "vocab"
               ? getVocabPasteHint()
-              : getTextPasteHint(pasteSubject)}
+              : pasteSubject === "writing"
+                ? getWritingPasteHint()
+                : getTextPasteHint(pasteSubject)}
           </p>
           <button
             type="button"
@@ -864,6 +971,7 @@ function ReadingPassageGroupCard({ passage, questions, onDeleteQuestion, onDelet
 function QuestionCard({ question, onDelete }) {
   const subjectMeta = getSubjectMeta(question.subject);
   const isObjective = question.type === "objective";
+  const isWritingItem = question.type === "writing";
   const showPassageSnippet =
     question.subject === "reading" && question.passage && !question.passageId;
 
@@ -891,11 +999,13 @@ function QuestionCard({ question, onDelete }) {
               ...(isObjective ? typeBadgeObjectiveStyle : typeBadgeSubjectiveStyle),
             }}
           >
-            {isObjective
-              ? question.options.length >= 5
-                ? "객관식 · 5지"
-                : "객관식 · 4지"
-              : "주관식"}
+            {isWritingItem
+              ? "서술형 영작"
+              : isObjective
+                ? question.options.length >= 5
+                  ? "객관식 · 5지"
+                  : "객관식 · 4지"
+                : "주관식"}
           </span>
         </div>
         <button type="button" onClick={() => onDelete(question.id)} style={deleteBtnStyle}>
@@ -917,10 +1027,18 @@ function QuestionCard({ question, onDelete }) {
 
 function QuestionCardBody({ question, compact = false }) {
   const isObjective = question.type === "objective";
+  const isWritingItem = question.type === "writing";
 
   return (
     <>
       <p style={compact ? nestedPromptStyle : promptStyle}>{question.prompt}</p>
+
+      {isWritingItem && question.givenWords ? (
+        <div style={writingGivenWordsBoxStyle}>
+          <span style={writingGivenWordsLabelStyle}>주어진 단어</span>
+          <span>{question.givenWords}</span>
+        </div>
+      ) : null}
 
       {isObjective && question.options.length > 0 && (
         <div style={optionsListStyle}>
@@ -1491,6 +1609,25 @@ const vocaWordPreviewStyle = {
   color: "#475569",
   lineHeight: 1.7,
   fontSize: 14,
+};
+
+const writingGivenWordsBoxStyle = {
+  marginBottom: 10,
+  padding: "10px 12px",
+  borderRadius: 10,
+  background: "#ecfdf5",
+  border: "1px solid #a7f3d0",
+  color: "#065f46",
+  lineHeight: 1.6,
+  fontSize: 14,
+};
+
+const writingGivenWordsLabelStyle = {
+  display: "block",
+  fontSize: 12,
+  fontWeight: 800,
+  marginBottom: 4,
+  color: "#047857",
 };
 
 const passagePreviewBoxStyle = {

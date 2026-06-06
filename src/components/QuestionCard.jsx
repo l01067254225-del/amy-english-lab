@@ -1,5 +1,6 @@
 import { getAnswerFeedback, gradeQuestion } from "../utils/grade";
 import { getVocaQuestionGuide } from "../utils/vocaExamBuilder";
+import { isWritingQuestion, WRITING_GUIDE_TEXT } from "../utils/writingQuestion";
 import SentenceArrange from "./SentenceArrange";
 
 export default function QuestionCard({
@@ -12,10 +13,12 @@ export default function QuestionCard({
   showWordBank,
 }) {
   const earned = submitted ? gradeQuestion(question, userAnswer) : null;
+  const isWriting = isWritingQuestion(question);
   const vocaGuide =
     question.subject === "vocab" ? getVocaQuestionGuide(question.type) : "";
-  const inputPlaceholder =
-    question.type === "spelling"
+  const inputPlaceholder = isWriting
+    ? "영어 문장을 입력하세요"
+    : question.type === "spelling"
       ? "영어 철자 입력"
       : question.type === "meaning"
         ? "한글 뜻 입력"
@@ -125,6 +128,36 @@ export default function QuestionCard({
         )}
       </div>
 
+      {isWriting ? (
+        <>
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: 13,
+              color: "#047857",
+              fontWeight: 700,
+            }}
+          >
+            [{WRITING_GUIDE_TEXT}]
+          </p>
+          {question.givenWords ? (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "#ecfdf5",
+                border: "1px solid #a7f3d0",
+                color: "#065f46",
+                lineHeight: 1.6,
+              }}
+            >
+              <strong>주어진 단어:</strong> {question.givenWords}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       {question.type === "sentence" ? (
         <SentenceArrange
           question={question}
@@ -191,6 +224,26 @@ export default function QuestionCard({
             </option>
           ))}
         </select>
+      ) : isWriting ? (
+        <textarea
+          placeholder={inputPlaceholder}
+          value={userAnswer}
+          disabled={submitted}
+          onChange={(e) => onAnswer(question.id, e.target.value)}
+          rows={4}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            padding: 12,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            boxSizing: "border-box",
+            fontSize: 15,
+            lineHeight: 1.6,
+            resize: "vertical",
+            minHeight: 96,
+          }}
+        />
       ) : (
         <input
           type="text"
