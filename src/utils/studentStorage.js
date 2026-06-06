@@ -6,40 +6,36 @@ export const DEFAULT_STUDENTS = [
     id: "amy01",
     password: "1234",
     name: "Amy",
-    className: "A반",
     school: "Amy Elementary",
     grade: "5학년",
-    level: "Intermediate",
+    level: "A1-1",
   },
   {
     uid: "seed-amy02",
     id: "amy02",
     password: "1234",
     name: "Kate",
-    className: "A반",
     school: "Amy Elementary",
     grade: "5학년",
-    level: "Intermediate",
+    level: "A1-1",
   },
   {
     uid: "seed-amy03",
     id: "amy03",
     password: "1234",
     name: "Tom",
-    className: "B반",
     school: "Amy Elementary",
     grade: "6학년",
-    level: "Advanced",
+    level: "A2-1",
   },
   {
     uid: "seed-amy04",
     id: "amy04",
     password: "1234",
     name: "Lucy",
-    className: "B반",
     school: "Amy Elementary",
     grade: "6학년",
-    level: "Advanced",
+    level: "A2-1",
   },
 ];
 
@@ -48,18 +44,18 @@ function createUid() {
 }
 
 function normalizeStudent(raw) {
-  return {
+  const student = {
     uid: raw.uid || createUid(),
     id: String(raw.id ?? "").trim(),
     password: String(raw.password ?? "").trim(),
     name: String(raw.name ?? "").trim(),
-    className: String(raw.className ?? raw.class ?? "").trim(),
     school: String(raw.school ?? "").trim(),
     grade: String(raw.grade ?? "").trim(),
     level: String(raw.level ?? "").trim(),
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
   };
+  return student;
 }
 
 function readStudentsRaw() {
@@ -156,7 +152,6 @@ export function deleteStudent(uid) {
 }
 
 export const EMPTY_STUDENT_FORM = {
-  className: "",
   name: "",
   school: "",
   grade: "",

@@ -38,7 +38,6 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
       const haystack = [
         student.name,
         student.school,
-        student.className,
         student.grade,
         student.level,
         student.id,
@@ -61,11 +60,10 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
 
   const validateForm = () => {
     const required = [
-      ["className", "반"],
+      ["level", "레벨"],
       ["name", "이름"],
       ["school", "학교"],
       ["grade", "학년"],
-      ["level", "레벨"],
       ["id", "아이디"],
       ["password", "패스워드"],
     ];
@@ -88,7 +86,6 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
 
     try {
       const payload = {
-        className: form.className.trim(),
         name: form.name.trim(),
         school: form.school.trim(),
         grade: form.grade.trim(),
@@ -110,7 +107,6 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const handleEdit = (student) => {
     setEditingUid(student.uid);
     setForm({
-      className: student.className,
       name: student.name,
       school: student.school,
       grade: student.grade,
@@ -147,13 +143,12 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
 
         <form onSubmit={handleSubmit}>
           <div style={formGridStyle}>
-            <Field label="반 (Class)" value={form.className} onChange={(v) => handleFieldChange("className", v)} placeholder="예: A반" />
-            <Field label="이름 (Name)" value={form.name} onChange={(v) => handleFieldChange("name", v)} placeholder="예: 홍길동" />
-            <Field label="학교 (School)" value={form.school} onChange={(v) => handleFieldChange("school", v)} placeholder="예: Amy Elementary" />
-            <Field label="학년 (Grade)" value={form.grade} onChange={(v) => handleFieldChange("grade", v)} placeholder="예: 5학년" />
             <LevelSelect value={form.level} onChange={(v) => handleFieldChange("level", v)} />
-            <Field label="아이디 (ID)" value={form.id} onChange={(v) => handleFieldChange("id", v)} placeholder="예: amy05" />
-            <Field label="패스워드 (Password)" value={form.password} onChange={(v) => handleFieldChange("password", v)} placeholder="예: 1234" />
+            <Field label="이름" value={form.name} onChange={(v) => handleFieldChange("name", v)} placeholder="예: 홍길동" />
+            <Field label="학교" value={form.school} onChange={(v) => handleFieldChange("school", v)} placeholder="예: Amy Elementary" />
+            <Field label="학년" value={form.grade} onChange={(v) => handleFieldChange("grade", v)} placeholder="예: 5학년" />
+            <Field label="아이디" value={form.id} onChange={(v) => handleFieldChange("id", v)} placeholder="예: amy05" />
+            <Field label="패스워드" value={form.password} onChange={(v) => handleFieldChange("password", v)} placeholder="예: 1234" />
           </div>
 
           {formError && <p style={errorStyle}>{formError}</p>}
@@ -174,7 +169,7 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="이름, 학교, 반, 아이디 검색..."
+            placeholder="이름, 학교, 레벨, 아이디 검색..."
             style={searchStyle}
           />
         </div>
@@ -190,11 +185,10 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>반</th>
+                  <th style={thStyle}>레벨</th>
                   <th style={thStyle}>이름</th>
                   <th style={thStyle}>학교</th>
                   <th style={thStyle}>학년</th>
-                  <th style={thStyle}>레벨</th>
                   <th style={thStyle}>아이디</th>
                   <th style={thStyle}>패스워드</th>
                   <th style={thStyle}></th>
@@ -203,13 +197,12 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
               <tbody>
                 {filteredStudents.map((student) => (
                   <tr key={student.uid} style={rowStyle}>
-                    <td style={tdStyle}>{student.className}</td>
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>{student.name}</td>
-                    <td style={tdStyle}>{student.school}</td>
-                    <td style={tdStyle}>{student.grade}</td>
                     <td style={tdStyle}>
                       <span style={levelBadgeStyle}>{student.level}</span>
                     </td>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{student.name}</td>
+                    <td style={tdStyle}>{student.school}</td>
+                    <td style={tdStyle}>{student.grade}</td>
                     <td style={tdStyle}>
                       <code style={codeStyle}>{student.id}</code>
                     </td>
@@ -306,8 +299,8 @@ const descStyle = {
 
 const formGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 14,
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 16,
 };
 
 const compactLabelStyle = {
