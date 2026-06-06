@@ -5,6 +5,13 @@ import {
   isAnswerMissingForDisplay,
   resolveDetailStudentAnswer,
 } from "./resultAnswerStorage";
+import {
+  appendTestAttemptToResult,
+  ATTEMPT_TYPES,
+  getLatestWrongAnswerRaw,
+  getTestAttempts,
+  syncWrongAnswerHistoryOnResult,
+} from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
 
 function getExamByTestId(testId) {
@@ -42,18 +49,22 @@ export function getRetestReviewItems(result) {
   if (!result) return [];
 
   const questions = ensureArray(getExamByTestId(result.testId)?.questions);
+  const synced = syncWrongAnswerHistoryOnResult(result);
 
-  return ensureArray(result.details)
+  return ensureArray(synced.details)
     .filter((detail) => detail && detail.correct === false)
     .map((detail) => {
       const question = resolveQuestionForDetail(questions, detail);
       if (!question) return null;
 
+      const wrongAnswer = getLatestWrongAnswerRaw(synced, detail.questionId, detail);
+
       return {
         num: detail.num,
         questionId: detail.questionId,
         question,
-        userAnswer: resolveDetailStudentAnswer(detail, result),
+        wrongAnswer,
+        userAnswer: wrongAnswer,
         correctAnswer: formatQuestionAnswer(question),
       };
     })
@@ -107,13 +118,42 @@ export function mergeExamRetestResult(previousResult, newRecord) {
 
   const score = mergedDetails.filter((detail) => detail.correct).length;
 
-  return {
+  const mergedBase = {
     ...newRecord,
     score,
     total: mergedDetails.length,
     details: mergedDetails,
     ...(previousResult?.clinicRetest ? { clinicRetest: previousResult.clinicRetest } : {}),
   };
+
+  let combined = previousResult ? syncWrongAnswerHistoryOnResult(previousResult) : null;
+
+  const hasFirstAttempt = combined
+    ? getTestAttempts(combined).some((attempt) => Number(attempt.attemptNumber) === 1)
+    : false;
+
+  if (!hasFirstAttempt && previousResult) {
+    combined = appendTestAttemptToResult(
+      null,
+      {
+        ...previousResult,
+        details: previousDetails,
+        submittedAt: previousResult.submittedAt,
+        attemptCount: 1,
+        score: Number(previousResult.score ?? 0),
+        total: Number(previousResult.total ?? mergedDetails.length),
+      },
+      ATTEMPT_TYPES.EXAM
+    );
+  }
+
+  combined = appendTestAttemptToResult(combined, mergedBase, ATTEMPT_TYPES.RETEST);
+
+  return syncWrongAnswerHistoryOnResult({
+    ...mergedBase,
+    test_attempts: combined.test_attempts,
+    answer_logs: combined.answer_logs,
+  });
 }
 
 export function isExamRetestPassedDetail(detail) {

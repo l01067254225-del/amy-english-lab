@@ -1,6 +1,11 @@
 import { gradeQuestion } from "./grade";
 import { replaceResult } from "./resultsStorage";
 import { ensureArray } from "./safeData";
+import {
+  appendTestAttemptToResult,
+  ATTEMPT_TYPES,
+  syncWrongAnswerHistoryOnResult,
+} from "./wrongAnswerHistory";
 
 export const CLINIC_RETEST_MAX_ATTEMPTS = 3;
 
@@ -180,8 +185,18 @@ export function saveClinicRetestResult(result, items, answers) {
   };
 
   const updated = applyClinicRetestToResult(result, clinicRetest, latestAttempt);
-  replaceResult(result.id, updated);
-  return updated;
+  const clinicRecord = {
+    ...updated,
+    submittedAt: latestAttempt.submittedAt,
+    attemptCount: Number(updated.attemptCount ?? 1),
+  };
+
+  const persisted = syncWrongAnswerHistoryOnResult(
+    appendTestAttemptToResult(updated, clinicRecord, ATTEMPT_TYPES.CLINIC)
+  );
+
+  replaceResult(result.id, persisted);
+  return persisted;
 }
 
 export function getClinicRetestSummary(result) {

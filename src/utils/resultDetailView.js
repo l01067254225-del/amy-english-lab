@@ -2,6 +2,10 @@ import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { formatStoredUserAnswer } from "./examRetestStorage";
 import { resolveDetailStudentAnswer, coalesceStudentAnswer } from "./resultAnswerStorage";
+import {
+  getLatestWrongAnswerRaw,
+  syncWrongAnswerHistoryOnResult,
+} from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
 
 function getExamByTestId(testId) {
@@ -20,14 +24,16 @@ function buildAttemptEntry(label, rawAnswer, question, correct) {
 export function buildResultDetailRows(result) {
   if (!result) return [];
 
-  const questions = ensureArray(getExamByTestId(result.testId)?.questions);
-  const attemptCount = Number(result.attemptCount ?? 1);
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const questions = ensureArray(getExamByTestId(synced.testId)?.questions);
+  const attemptCount = Number(synced.attemptCount ?? 1);
 
-  return ensureArray(result.details).map((detail) => {
+  return ensureArray(synced.details).map((detail) => {
     const question = resolveQuestionForDetail(questions, detail);
     const prompt = String(question?.prompt ?? "").trim() || "(문항 정보 없음)";
     const correctAnswer = question ? formatQuestionAnswer(question) : "—";
-    const resolvedAnswer = resolveDetailStudentAnswer(detail, result);
+    const finalAnswerRaw = resolveDetailStudentAnswer(detail, synced);
+    const wrongAnswerRaw = getLatestWrongAnswerRaw(synced, detail.questionId, detail);
     const attempts = [];
 
     if (detail.examRetest) {
@@ -40,7 +46,7 @@ export function buildResultDetailRows(result) {
         detail.examRetest.userAnswer,
         detail.examRetest.studentAnswer,
         detail.examRetest.userResponse,
-        resolvedAnswer
+        finalAnswerRaw
       );
 
       attempts.push(
@@ -49,11 +55,11 @@ export function buildResultDetailRows(result) {
       );
     } else if (attemptCount > 1) {
       attempts.push(
-        buildAttemptEntry("최종 응시", resolvedAnswer, question, detail.correct)
+        buildAttemptEntry("최종 응시", finalAnswerRaw, question, detail.correct)
       );
     } else {
       attempts.push(
-        buildAttemptEntry("1차 시험", resolvedAnswer, question, detail.correct)
+        buildAttemptEntry("1차 시험", finalAnswerRaw, question, detail.correct)
       );
     }
 
@@ -80,15 +86,21 @@ export function buildResultDetailRows(result) {
       correct: detail.correct === true,
       examRetestPassed: Boolean(detail.examRetest?.passed),
       attempts,
-      latestStudentAnswer: formatStoredUserAnswer(question, resolvedAnswer),
+      latestStudentAnswer: formatStoredUserAnswer(question, finalAnswerRaw),
+      wrongAnswerDisplay:
+        wrongAnswerRaw != null ? formatStoredUserAnswer(question, wrongAnswerRaw) : "—",
+      hasWrongHistory: wrongAnswerRaw != null,
     };
   });
 }
 
 export function hasMultiAttemptHistory(result) {
-  const attemptCount = Number(result?.attemptCount ?? 1);
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const attemptCount = Number(synced.attemptCount ?? 1);
   if (attemptCount > 1) return true;
-  return ensureArray(result?.details).some(
-    (detail) => detail?.examRetest || detail?.clinicRetest
+  if (ensureArray(synced.test_attempts).length > 1) return true;
+  if (ensureArray(synced.answer_logs).length > 0) return true;
+  return ensureArray(synced.details).some(
+    (detail) => detail?.examRetest || detail?.clinicRetest || detail?.wrongAnswerHistory?.length
   );
 }

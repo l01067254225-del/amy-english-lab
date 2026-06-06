@@ -39,14 +39,15 @@ export default function RetestWrongAnswerReview({
               <QuestionCard
                 question={item.question}
                 index={item.num - 1}
-                userAnswer={item.userAnswer}
+                userAnswer={item.wrongAnswer ?? item.userAnswer ?? ""}
                 submitted
                 onAnswer={() => {}}
                 showPassage={shouldShowReadingPassage(item.question, questions, index)}
               />
               <div style={answerCompareStyle}>
                 <p style={wrongAnswerStyle}>
-                  내 답안: {formatStoredUserAnswer(item.question, item.userAnswer)}
+                  틀렸던 답안:{" "}
+                  {formatStoredUserAnswer(item.question, item.wrongAnswer ?? item.userAnswer)}
                 </p>
                 <p style={correctAnswerStyle}>정답: {item.correctAnswer}</p>
               </div>

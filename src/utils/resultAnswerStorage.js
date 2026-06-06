@@ -1,4 +1,5 @@
 import { isAnswerProvided } from "./examSubmissionValidation";
+import { syncWrongAnswerHistoryOnResult } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
 
 /** 제출 유효성: 빈 문자열도 미입력 */
@@ -137,14 +138,14 @@ export function enrichResultRecordForSave(record) {
     normalizedAnswers[String(detail.questionId)] = detail.userAnswer;
   });
 
-  return {
+  return syncWrongAnswerHistoryOnResult({
     ...record,
     details,
     answers: normalizedAnswers,
     responses: normalizedAnswers,
     userResponses: normalizedAnswers,
     studentAnswers: normalizedAnswers,
-  };
+  });
 }
 
 export function normalizeStoredResult(record) {

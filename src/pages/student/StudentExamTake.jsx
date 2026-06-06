@@ -200,6 +200,10 @@ export default function StudentExamTake({
 
       if (isRetest && retestResultId && previousResult) {
         payload = mergeExamRetestResult(previousResult, record);
+      } else {
+        payload = syncWrongAnswerHistoryOnResult(
+          appendTestAttemptToResult(null, record, ATTEMPT_TYPES.EXAM)
+        );
       }
 
       const next =

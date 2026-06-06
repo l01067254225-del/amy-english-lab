@@ -65,7 +65,8 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
 
         {showAttemptHistory && (
           <p style={historyHintStyle}>
-            재시험·오답 노트 이력이 있는 문항은 1차 답안과 이후 답안을 구분해 표시합니다.
+            「틀렸던 답안」은 answer_logs에서 isCorrect=false인 가장 최근 오답입니다. 「최종
+            답안」은 현재 제출 상태입니다.
           </p>
         )}
 
@@ -77,7 +78,8 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
               <tr>
                 <th style={thStyle}>문제 번호</th>
                 <th style={thStyle}>문제 내용</th>
-                <th style={thStyle}>학생 답안</th>
+                <th style={thStyle}>틀렸던 답안</th>
+                <th style={thStyle}>최종 답안</th>
                 <th style={thStyle}>정답</th>
                 <th style={{ ...thStyle, textAlign: "center", width: 96 }}>정오답</th>
               </tr>
@@ -95,6 +97,13 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
                     )}
                   </td>
                   <td style={tdStyle}>{row.prompt}</td>
+                  <td style={tdStyle}>
+                    {row.hasWrongHistory ? (
+                      <AnswerCell text={row.wrongAnswerDisplay} variant="wrong" />
+                    ) : (
+                      <span style={{ color: "#94a3b8" }}>—</span>
+                    )}
+                  </td>
                   <td style={tdStyle}>
                     {row.attempts.length > 1 ? (
                       <div style={attemptStackStyle}>
@@ -152,7 +161,7 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
 
         {hasWrongRows && (
           <p style={legendStyle}>
-            오답 문항은 학생 답안(빨간색)과 정답(초록색)을 나란히 비교할 수 있습니다.
+            틀렸던 답안(빨간색) · 최종 답안 · 정답(초록색)을 나란히 비교할 수 있습니다.
           </p>
         )}
       </div>
