@@ -11,6 +11,10 @@ import {
 import { formatTestDate, getTodayDateString, LEVEL_OPTIONS } from "../../utils/levels";
 import { buildVocaExamQuestions, getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
 import {
+  buildMaterialCatalog,
+  collectQuestionIdsFromMaterialSets,
+} from "../../utils/materialSetStorage";
+import {
   collectWordsFromVocaSets,
   filterVocaSetsByLevel,
   loadVocaSets,
@@ -44,7 +48,7 @@ export default function TeacherExamBuilderTab() {
   const [vocaSets] = useState(() => loadVocaSets());
   const [examSets, setExamSets] = useState(() => loadExamSets());
   const [selectedIds, setSelectedIds] = useState([]);
-  const [selectedSetIds, setSelectedSetIds] = useState([]);
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState([]);
   const [examTitle, setExamTitle] = useState("");
   const [targetLevel, setTargetLevel] = useState("");
   const [testDate, setTestDate] = useState(() => getTodayDateString());
@@ -54,6 +58,7 @@ export default function TeacherExamBuilderTab() {
   const [buildError, setBuildError] = useState("");
 
   const isVocabMode = filterSubject === "vocab";
+  const isMaterialMode = filterSubject !== "all";
 
   const levelQuestions = useMemo(
     () => filterQuestionsByLevel(questionBank, targetLevel),
@@ -65,15 +70,30 @@ export default function TeacherExamBuilderTab() {
     [vocaSets, targetLevel]
   );
 
+  const materialCatalog = useMemo(
+    () =>
+      buildMaterialCatalog({
+        questions: levelQuestions,
+        vocaSets: levelVocaSets,
+        subject: filterSubject,
+        level: targetLevel,
+      }),
+    [levelQuestions, levelVocaSets, filterSubject, targetLevel]
+  );
+
   const filteredQuestions = useMemo(() => {
-    if (filterSubject === "all") return levelQuestions;
-    if (isVocabMode) return [];
-    return levelQuestions.filter((q) => q.subject === filterSubject);
-  }, [levelQuestions, filterSubject, isVocabMode]);
+    if (isMaterialMode) return [];
+    return levelQuestions;
+  }, [levelQuestions, isMaterialMode]);
+
+  const selectedMaterialQuestionIds = useMemo(
+    () => collectQuestionIdsFromMaterialSets(materialCatalog, selectedMaterialIds),
+    [materialCatalog, selectedMaterialIds]
+  );
 
   const selectedWords = useMemo(
-    () => collectWordsFromVocaSets(levelVocaSets, selectedSetIds),
-    [levelVocaSets, selectedSetIds]
+    () => collectWordsFromVocaSets(levelVocaSets, selectedMaterialIds),
+    [levelVocaSets, selectedMaterialIds]
   );
 
   const availableWordCount = selectedWords.length;
@@ -87,7 +107,7 @@ export default function TeacherExamBuilderTab() {
       }
       return prev;
     });
-  }, [isVocabMode, availableWordCount, selectedSetIds]);
+  }, [isVocabMode, availableWordCount, selectedMaterialIds]);
 
   const toggleQuestion = (id) => {
     setSelectedIds((prev) =>
@@ -95,9 +115,11 @@ export default function TeacherExamBuilderTab() {
     );
   };
 
-  const toggleVocaSet = (setId) => {
-    setSelectedSetIds((prev) =>
-      prev.includes(setId) ? prev.filter((item) => item !== setId) : [...prev, setId]
+  const toggleMaterial = (materialId) => {
+    setSelectedMaterialIds((prev) =>
+      prev.includes(materialId)
+        ? prev.filter((item) => item !== materialId)
+        : [...prev, materialId]
     );
   };
 
@@ -111,13 +133,13 @@ export default function TeacherExamBuilderTab() {
     }
   };
 
-  const toggleAllVocaSets = () => {
-    const visibleIds = levelVocaSets.map((set) => set.setId);
-    const allSelected = visibleIds.every((id) => selectedSetIds.includes(id));
+  const toggleAllMaterials = () => {
+    const visibleIds = materialCatalog.map((entry) => entry.id);
+    const allSelected = visibleIds.every((id) => selectedMaterialIds.includes(id));
     if (allSelected) {
-      setSelectedSetIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+      setSelectedMaterialIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
     } else {
-      setSelectedSetIds((prev) => [...new Set([...prev, ...visibleIds])]);
+      setSelectedMaterialIds((prev) => [...new Set([...prev, ...visibleIds])]);
     }
   };
 
@@ -129,10 +151,13 @@ export default function TeacherExamBuilderTab() {
         return question?.level === nextLevel;
       })
     );
-    setSelectedSetIds((prev) =>
+    setSelectedMaterialIds((prev) =>
       prev.filter((id) => {
-        const set = vocaSets.find((item) => item.setId === id);
-        return set?.level === nextLevel;
+        const voca = vocaSets.find((set) => set.setId === id);
+        if (voca) return voca.level === nextLevel;
+        return questionBank.some(
+          (question) => question.materialSetId === id && question.level === nextLevel
+        );
       })
     );
   };
@@ -140,11 +165,8 @@ export default function TeacherExamBuilderTab() {
   const handleFilterSubjectChange = (nextSubject) => {
     setFilterSubject(nextSubject);
     setBuildError("");
-    if (nextSubject === "vocab") {
-      setSelectedIds([]);
-    } else {
-      setSelectedSetIds([]);
-    }
+    setSelectedIds([]);
+    setSelectedMaterialIds([]);
   };
 
   const applyDrawPreset = (count) => {
@@ -168,12 +190,12 @@ export default function TeacherExamBuilderTab() {
     }
 
     if (isVocabMode) {
-      if (selectedSetIds.length === 0) {
-        setBuildError("Voca 단어 세트를 하나 이상 선택해 주세요.");
+      if (selectedMaterialIds.length === 0) {
+        setBuildError("시험 자료를 하나 이상 선택해 주세요.");
         return;
       }
 
-      const words = collectWordsFromVocaSets(levelVocaSets, selectedSetIds);
+      const words = collectWordsFromVocaSets(levelVocaSets, selectedMaterialIds);
       if (words.length === 0) {
         setBuildError("선택한 세트에 등록된 단어가 없습니다.");
         return;
@@ -205,15 +227,50 @@ export default function TeacherExamBuilderTab() {
         targetLevel,
         testDate,
         vocaSource: {
-          setIds: selectedSetIds,
+          setIds: selectedMaterialIds,
           examType: vocaExamType,
           drawCount,
         },
       });
       setExamSets(next);
       setExamTitle("");
-      setSelectedSetIds([]);
+      setSelectedMaterialIds([]);
       setVocaDrawCount("");
+      setBuildError("");
+      return;
+    }
+
+    if (isMaterialMode) {
+      if (selectedMaterialIds.length === 0) {
+        setBuildError("시험 자료를 하나 이상 선택해 주세요.");
+        return;
+      }
+
+      const selectedQuestions = questionBank.filter(
+        (q) =>
+          selectedMaterialQuestionIds.includes(q.id) &&
+          q.level === targetLevel &&
+          q.subject === filterSubject
+      );
+
+      if (selectedQuestions.length === 0) {
+        setBuildError("선택한 자료에 포함된 문제가 없습니다.");
+        return;
+      }
+
+      const next = addExamSet({
+        title: examTitle.trim(),
+        questions: selectedQuestions,
+        targetLevel,
+        testDate,
+        materialSource: {
+          materialSetIds: selectedMaterialIds,
+          subject: filterSubject,
+        },
+      });
+      setExamSets(next);
+      setExamTitle("");
+      setSelectedMaterialIds([]);
       setBuildError("");
       return;
     }
@@ -248,8 +305,10 @@ export default function TeacherExamBuilderTab() {
       <div style={summaryCard}>
         <h2 style={sectionTitle}>시험지 만들기</h2>
         <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
-          {isVocabMode
-            ? "Voca는 단어 세트를 선택하고 시험 유형·출제 수를 지정하면 무작위로 문항이 생성됩니다."
+          {isMaterialMode
+            ? isVocabMode
+              ? "Voca 시험 자료를 선택하고 시험 유형·출제 수를 지정하면 무작위로 문항이 생성됩니다."
+              : "과목별 시험 자료를 선택하면 포함된 문항이 자동으로 시험지에 반영됩니다."
             : "대상 레벨과 시험 날짜를 지정한 뒤, 해당 레벨 문제은행에서 문항을 선택해 시험지를 생성하세요."}{" "}
           학생은 본인 레벨과 시험 날짜가 일치할 때만 시험을 볼 수 있습니다.
         </p>
@@ -315,21 +374,24 @@ export default function TeacherExamBuilderTab() {
             ))}
           </select>
 
-          {isVocabMode ? (
+          {isMaterialMode ? (
             <>
               <button
                 type="button"
-                onClick={toggleAllVocaSets}
+                onClick={toggleAllMaterials}
                 style={btnSecondary}
-                disabled={!targetLevel || levelVocaSets.length === 0}
+                disabled={!targetLevel || materialCatalog.length === 0}
               >
-                {levelVocaSets.every((set) => selectedSetIds.includes(set.setId)) &&
-                levelVocaSets.length > 0
-                  ? "세트 선택 해제"
-                  : "세트 전체 선택"}
+                {materialCatalog.every((entry) => selectedMaterialIds.includes(entry.id)) &&
+                materialCatalog.length > 0
+                  ? "자료 선택 해제"
+                  : "자료 전체 선택"}
               </button>
               <span style={{ alignSelf: "center", color: "#64748b", fontSize: 14 }}>
-                선택 세트 {selectedSetIds.length}개 · 사용 가능 단어 {availableWordCount}개
+                선택 자료 {selectedMaterialIds.length}개
+                {isVocabMode
+                  ? ` · 사용 가능 단어 ${availableWordCount}개`
+                  : ` · 포함 문항 ${selectedMaterialQuestionIds.length}개`}
               </span>
             </>
           ) : (
@@ -361,11 +423,11 @@ export default function TeacherExamBuilderTab() {
           <p style={{ margin: 0, color: "#64748b" }}>
             먼저 대상 레벨을 선택하면 해당 레벨 자료만 표시됩니다.
           </p>
-        ) : isVocabMode ? (
-          levelVocaSets.length === 0 ? (
+        ) : isMaterialMode ? (
+          materialCatalog.length === 0 ? (
             <p style={{ margin: 0, color: "#64748b" }}>
-              {targetLevel} 레벨 Voca 단어 세트가 없습니다. 문제은행 관리에서 텍스트 붙여넣기로
-              세트를 등록해 주세요.
+              {targetLevel} 레벨 {getSubjectLabel(filterSubject)} 시험 자료가 없습니다. 문제은행
+              관리에서 텍스트 붙여넣기로 자료를 등록해 주세요.
             </p>
           ) : (
             <div style={{ overflowX: "auto", marginBottom: 16 }}>
@@ -373,32 +435,28 @@ export default function TeacherExamBuilderTab() {
                 <thead>
                   <tr>
                     <th style={{ ...thTdStyle, width: 48 }}></th>
-                    <th style={thTdStyle}>세트 이름</th>
+                    <th style={thTdStyle}>시험 자료명</th>
+                    <th style={thTdStyle}>과목</th>
                     <th style={thTdStyle}>레벨</th>
-                    <th style={thTdStyle}>단어 수</th>
+                    <th style={thTdStyle}>{isVocabMode ? "단어 수" : "문항 수"}</th>
                     <th style={thTdStyle}>미리보기</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {levelVocaSets.map((set) => (
-                    <tr key={set.setId}>
+                  {materialCatalog.map((entry) => (
+                    <tr key={`${entry.kind}-${entry.id}`}>
                       <td style={thTdStyle}>
                         <input
                           type="checkbox"
-                          checked={selectedSetIds.includes(set.setId)}
-                          onChange={() => toggleVocaSet(set.setId)}
+                          checked={selectedMaterialIds.includes(entry.id)}
+                          onChange={() => toggleMaterial(entry.id)}
                         />
                       </td>
-                      <td style={thTdStyle}>{set.setName}</td>
-                      <td style={thTdStyle}>{set.level || "—"}</td>
-                      <td style={thTdStyle}>{set.words.length}개</td>
-                      <td style={thTdStyle}>
-                        {set.words
-                          .slice(0, 3)
-                          .map((entry) => `${entry.word}(${entry.mean})`)
-                          .join(", ")}
-                        {set.words.length > 3 ? " …" : ""}
-                      </td>
+                      <td style={thTdStyle}>{entry.name}</td>
+                      <td style={thTdStyle}>{getSubjectLabel(entry.subject)}</td>
+                      <td style={thTdStyle}>{entry.level || "—"}</td>
+                      <td style={thTdStyle}>{entry.count}개</td>
+                      <td style={thTdStyle}>{entry.preview || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -449,7 +507,7 @@ export default function TeacherExamBuilderTab() {
           </div>
         )}
 
-        {isVocabMode && selectedSetIds.length > 0 && availableWordCount > 0 && (
+        {isVocabMode && selectedMaterialIds.length > 0 && availableWordCount > 0 && (
           <div style={vocaOptionsPanelStyle}>
             <h3 style={vocaOptionsTitleStyle}>단어 시험 설정</h3>
 
@@ -521,7 +579,7 @@ export default function TeacherExamBuilderTab() {
           style={btnPrimary}
           disabled={
             !targetLevel ||
-            (isVocabMode ? levelVocaSets.length === 0 : questionBank.length === 0)
+            (isMaterialMode ? materialCatalog.length === 0 : questionBank.length === 0)
           }
         >
           시험지 만들기

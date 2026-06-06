@@ -43,16 +43,10 @@ export function loadVocaSets() {
   return ensureArray(readJson()).map(normalizeVocaSet);
 }
 
+import { suggestMaterialSetName } from "./materialSetStorage";
+
 export function suggestVocaSetName(level = "") {
-  const all = loadVocaSets();
-  const sameLevel = level ? all.filter((set) => set.level === level) : all;
-  const seq = sameLevel.length + 1;
-  const dateLabel = new Date().toLocaleDateString("ko-KR", {
-    month: "long",
-    day: "numeric",
-  });
-  const prefix = level ? `${level} ` : "";
-  return `${prefix}Voca Day ${seq} (${dateLabel})`;
+  return suggestMaterialSetName("vocab", level);
 }
 
 export function addVocaSet({ setName, level, words }) {

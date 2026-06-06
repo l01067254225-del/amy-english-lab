@@ -47,6 +47,10 @@ export function createQuestionId() {
   return `qb-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export function createMaterialSetId() {
+  return `mat_${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export { createPassageId };
 
 function applyReadingFields(item, subject, passage, passageId) {
@@ -76,6 +80,9 @@ export function normalizeQuestion(question) {
     type,
     options,
     level: String(question.level ?? "").trim(),
+    materialSetId: String(question.materialSetId ?? "").trim() || undefined,
+    materialSetName:
+      String(question.materialSetName ?? question.setName ?? "").trim() || undefined,
   };
 
   if (question.subject === "reading") {
@@ -125,10 +132,18 @@ export function addQuestion({
   return next;
 }
 
-export function addQuestionsBulk(items) {
+export function addQuestionsBulk(items, { materialSetId = "", materialSetName = "" } = {}) {
   const baseTime = Date.now();
+  const sharedMaterialSetId = String(materialSetId ?? "").trim() || undefined;
+  const sharedMaterialSetName = String(materialSetName ?? "").trim() || undefined;
+
   const newItems = items.map((item, index) => {
-    const type = item.type === "objective" ? "objective" : "subjective";
+    const type =
+      item.type === "objective"
+        ? "objective"
+        : item.type === "meaning" || item.type === "spelling"
+          ? item.type
+          : "subjective";
     let question = {
       id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
       type,
@@ -140,6 +155,9 @@ export function addQuestionsBulk(items) {
           ? item.options.map((option) => String(option).trim())
           : [],
       level: String(item.level ?? "").trim(),
+      materialSetId: String(item.materialSetId ?? sharedMaterialSetId ?? "").trim() || undefined,
+      materialSetName:
+        String(item.materialSetName ?? sharedMaterialSetName ?? "").trim() || undefined,
       createdAt: new Date().toISOString(),
     };
     question = applyReadingFields(
@@ -167,6 +185,12 @@ export function removeReadingPassageGroup(passageId) {
   return next;
 }
 
+export function removeQuestionsByMaterialSet(materialSetId) {
+  const next = loadQuestionBank().filter((q) => q.materialSetId !== materialSetId);
+  writeJson(QUESTION_BANK_KEY, next);
+  return next;
+}
+
 export function formatQuestionAnswer(question) {
   const q = normalizeQuestion(question);
   if (q.type === "objective") {
@@ -181,7 +205,7 @@ export function loadExamSets() {
   return ensureArray(readJson(EXAM_SETS_KEY));
 }
 
-export function addExamSet({ title, questions, targetLevel, testDate, vocaSource = null }) {
+export function addExamSet({ title, questions, targetLevel, testDate, vocaSource = null, materialSource = null }) {
   const item = {
     id: `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: title.trim(),
@@ -191,6 +215,7 @@ export function addExamSet({ title, questions, targetLevel, testDate, vocaSource
     questions: questions.map(normalizeQuestion),
     createdAt: new Date().toISOString(),
     ...(vocaSource ? { vocaSource } : {}),
+    ...(materialSource ? { materialSource } : {}),
   };
   const next = [item, ...loadExamSets()];
   writeJson(EXAM_SETS_KEY, next);

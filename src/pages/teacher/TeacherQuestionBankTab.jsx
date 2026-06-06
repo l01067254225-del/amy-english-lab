@@ -3,12 +3,14 @@ import {
   SUBJECT_OPTIONS,
   addQuestion,
   addQuestionsBulk,
+  createMaterialSetId,
   createPassageId,
   formatQuestionAnswer,
   getSubjectLabel,
   getSubjectMeta,
   loadQuestionBank,
   removeQuestion,
+  removeQuestionsByMaterialSet,
   removeReadingPassageGroup,
 } from "../../utils/questionBankStorage";
 import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
@@ -26,8 +28,12 @@ import {
   addVocaSet,
   loadVocaSets,
   removeVocaSet,
-  suggestVocaSetName,
 } from "../../utils/vocaSetStorage";
+import {
+  buildMaterialCatalog,
+  getMaterialNamePlaceholder,
+  suggestMaterialSetName,
+} from "../../utils/materialSetStorage";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 import {
@@ -54,7 +60,7 @@ export default function TeacherQuestionBankTab() {
   const [pasteText, setPasteText] = useState("");
   const [pasteSubject, setPasteSubject] = useState("grammar");
   const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
-  const [vocabSetName, setVocabSetName] = useState("");
+  const [materialSetName, setMaterialSetName] = useState("");
   const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
 
   const isReading = subject === "reading";
@@ -68,6 +74,7 @@ export default function TeacherQuestionBankTab() {
         q.prompt,
         q.answer,
         q.passage,
+        q.materialSetName,
         getSubjectLabel(q.subject),
         ...(q.options ?? []),
       ]
@@ -77,26 +84,26 @@ export default function TeacherQuestionBankTab() {
     });
   }, [questions, searchQuery, filterSubject]);
 
+  const standaloneQuestions = useMemo(() => {
+    if (filterSubject === "vocab") return [];
+    return filteredQuestions.filter((question) => !question.materialSetId);
+  }, [filteredQuestions, filterSubject]);
+
   const displayList = useMemo(
-    () => buildQuestionDisplayList(filteredQuestions),
-    [filteredQuestions]
+    () => buildQuestionDisplayList(standaloneQuestions),
+    [standaloneQuestions]
   );
 
-  const filteredVocaSets = useMemo(() => {
-    if (filterSubject !== "all" && filterSubject !== "vocab") return [];
-    const query = searchQuery.trim().toLowerCase();
-    return vocaSets.filter((set) => {
-      if (!query) return true;
-      const haystack = [
-        set.setName,
-        set.level,
-        ...set.words.flatMap((word) => [word.word, word.mean]),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [vocaSets, searchQuery, filterSubject]);
+  const materialCatalog = useMemo(
+    () =>
+      buildMaterialCatalog({
+        questions,
+        vocaSets,
+        subject: filterSubject,
+        query: searchQuery,
+      }),
+    [questions, vocaSets, filterSubject, searchQuery]
+  );
 
   const handleSubjectChange = (nextSubject) => {
     setSubject(nextSubject);
@@ -192,9 +199,16 @@ export default function TeacherQuestionBankTab() {
     setQuestions(removeQuestion(id));
   };
 
-  const handleDeleteVocaSet = (setId) => {
-    if (!confirm("이 Voca 단어 세트를 삭제할까요?")) return;
-    setVocaSets(removeVocaSet(setId));
+  const handleDeleteMaterial = (entry) => {
+    const label = entry.name || "이 시험 자료";
+    if (!confirm(`"${label}" 자료를 삭제할까요?`)) return;
+
+    if (entry.kind === "voca") {
+      setVocaSets(removeVocaSet(entry.id));
+      return;
+    }
+
+    setQuestions(removeQuestionsByMaterialSet(entry.id));
   };
 
   const processCsvFile = async (file) => {
@@ -256,7 +270,7 @@ export default function TeacherQuestionBankTab() {
           return;
         }
 
-        const setName = vocabSetName.trim() || suggestVocaSetName(questionLevel);
+        const setName = materialSetName.trim() || suggestMaterialSetName("vocab", questionLevel);
         const words = entries.map((entry) => ({
           word: entry.word,
           mean: entry.meaning,
@@ -269,7 +283,7 @@ export default function TeacherQuestionBankTab() {
         });
         setVocaSets(nextSets);
         setPasteText("");
-        setVocabSetName("");
+        setMaterialSetName("");
 
         const errorNote =
           errors.length > 0
@@ -277,7 +291,7 @@ export default function TeacherQuestionBankTab() {
             : "";
 
         alert(
-          `Voca 단어 세트 "${setName}" — 총 ${words.length}개 단어가 세트로 등록되었습니다!${errorNote}`
+          `시험 자료 "${setName}" — Voca 단어 ${words.length}개가 세트로 등록되었습니다!${errorNote}`
         );
         return;
       }
@@ -292,18 +306,29 @@ export default function TeacherQuestionBankTab() {
         return;
       }
 
-      const enrichedItems = items.map((item) => ({ ...item, level: questionLevel }));
+      const resolvedMaterialName =
+        materialSetName.trim() || suggestMaterialSetName(pasteSubject, questionLevel);
+      const materialSetId = createMaterialSetId();
 
-      const next = addQuestionsBulk(enrichedItems);
+      const next = addQuestionsBulk(
+        items.map((item) => ({ ...item, level: questionLevel })),
+        {
+          materialSetId,
+          materialSetName: resolvedMaterialName,
+        }
+      );
       setQuestions(next);
       setPasteText("");
+      setMaterialSetName("");
 
       const errorNote =
         errors.length > 0
           ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
           : "";
 
-      alert(`성공적으로 ${items.length}개의 문항이 등록되었습니다.${errorNote}`);
+      alert(
+        `시험 자료 "${resolvedMaterialName}" — 총 ${items.length}개 문항이 등록되었습니다.${errorNote}`
+      );
     } finally {
       setPasteAnalyzing(false);
     }
@@ -563,18 +588,16 @@ export default function TeacherQuestionBankTab() {
           </label>
         </div>
 
-        {pasteSubject === "vocab" && (
-          <label style={{ ...fieldLabelStyle, marginBottom: 12, display: "block" }}>
-            단어 세트 이름
-            <input
-              type="text"
-              value={vocabSetName}
-              onChange={(e) => setVocabSetName(e.target.value)}
-              placeholder={questionLevel ? suggestVocaSetName(questionLevel) : "예: 중등 필수 어휘 Day 1"}
-              style={selectStyle}
-            />
-          </label>
-        )}
+        <label style={{ ...fieldLabelStyle, marginBottom: 12, display: "block" }}>
+          시험 자료명 (단원/챕터)
+          <input
+            type="text"
+            value={materialSetName}
+            onChange={(e) => setMaterialSetName(e.target.value)}
+            placeholder={getMaterialNamePlaceholder(pasteSubject, questionLevel)}
+            style={selectStyle}
+          />
+        </label>
 
         <textarea
           value={pasteText}
@@ -610,10 +633,12 @@ export default function TeacherQuestionBankTab() {
           <div>
             <h2 style={panelTitleStyle}>문제은행 목록</h2>
             <p style={panelDescStyle}>
-              총 {questions.length}건 · Voca 세트 {vocaSets.length}개 · 표시{" "}
-              {filterSubject === "vocab" || filterSubject === "all"
-                ? `${filteredVocaSets.length}세트 · ${filteredQuestions.length}문항`
-                : `${filteredQuestions.length}건`}
+              총 {questions.length}건 · 시험 자료 {materialCatalog.length}개 · 표시{" "}
+              {filterSubject === "all"
+                ? `${materialCatalog.length}자료 · ${filteredQuestions.length}문항`
+                : filterSubject === "vocab"
+                  ? `${materialCatalog.length}자료`
+                  : `${materialCatalog.length}자료 · ${filteredQuestions.filter((q) => !q.materialSetId).length}개별`}
             </p>
           </div>
           <input
@@ -643,22 +668,18 @@ export default function TeacherQuestionBankTab() {
           ))}
         </div>
 
-        {(filterSubject === "all" || filterSubject === "vocab") && filteredVocaSets.length > 0 && (
+        {materialCatalog.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <h3 style={vocaSetSectionTitleStyle}>Voca 단어 세트 ({filteredVocaSets.length})</h3>
+            <h3 style={vocaSetSectionTitleStyle}>시험 자료 목록 ({materialCatalog.length})</h3>
             <div style={cardListStyle}>
-              {filteredVocaSets.map((set) => (
-                <VocaSetCard key={set.setId} set={set} onDelete={handleDeleteVocaSet} />
+              {materialCatalog.map((entry) => (
+                <MaterialSetCard key={`${entry.kind}-${entry.id}`} entry={entry} onDelete={handleDeleteMaterial} />
               ))}
             </div>
           </div>
         )}
 
-        {filteredQuestions.length === 0 &&
-        !(
-          (filterSubject === "vocab" || filterSubject === "all") &&
-          filteredVocaSets.length > 0
-        ) ? (
+        {filteredQuestions.length === 0 && materialCatalog.length === 0 ? (
           <div style={emptyStateStyle}>
             <p style={{ margin: 0, fontWeight: 700, color: "#334155" }}>
               {questions.length === 0 && vocaSets.length === 0
@@ -669,7 +690,7 @@ export default function TeacherQuestionBankTab() {
               위에서 문제를 추가하거나 CSV·텍스트 붙여넣기로 등록해 보세요.
             </p>
           </div>
-        ) : filteredQuestions.length > 0 ? (
+        ) : displayList.length > 0 ? (
           <div style={cardListStyle}>
             {displayList.map((item) =>
               item.type === "readingGroup" ? (
@@ -695,10 +716,9 @@ export default function TeacherQuestionBankTab() {
   );
 }
 
-function VocaSetCard({ set, onDelete }) {
-  const subjectMeta = getSubjectMeta("vocab");
-  const preview = set.words.slice(0, 6);
-  const restCount = Math.max(0, set.words.length - preview.length);
+function MaterialSetCard({ entry, onDelete }) {
+  const subjectMeta = getSubjectMeta(entry.subject);
+  const countLabel = entry.kind === "voca" ? `단어 ${entry.count}개` : `문항 ${entry.count}개`;
 
   return (
     <article
@@ -717,29 +737,26 @@ function VocaSetCard({ set, onDelete }) {
               background: "white",
             }}
           >
-            Voca · 단어 세트
+            {getSubjectLabel(entry.subject)} · 시험 자료
           </span>
-          <span style={readingCountBadgeStyle}>단어 {set.words.length}개</span>
-          {set.level ? <span style={levelBadgeStyle}>{set.level}</span> : null}
+          <span style={readingCountBadgeStyle}>{countLabel}</span>
+          {entry.level ? <span style={levelBadgeStyle}>{entry.level}</span> : null}
         </div>
-        <button type="button" onClick={() => onDelete(set.setId)} style={deleteBtnStyle}>
+        <button type="button" onClick={() => onDelete(entry)} style={deleteBtnStyle}>
           삭제
         </button>
       </div>
 
-      <h3 style={vocaSetNameStyle}>{set.setName}</h3>
+      <h3 style={vocaSetNameStyle}>{entry.name}</h3>
       <p style={vocaSetMetaStyle}>
-        {new Date(set.createdAt).toLocaleDateString("ko-KR")} 등록
+        {entry.createdAt
+          ? `${new Date(entry.createdAt).toLocaleDateString("ko-KR")} 등록`
+          : "등록일 미상"}
       </p>
 
-      <ul style={vocaWordPreviewStyle}>
-        {preview.map((entry) => (
-          <li key={`${entry.word}-${entry.mean}`}>
-            <strong>{entry.word}</strong> — {entry.mean}
-          </li>
-        ))}
-        {restCount > 0 ? <li style={{ color: "#64748b" }}>외 {restCount}개 단어</li> : null}
-      </ul>
+      {entry.preview ? (
+        <p style={{ margin: 0, color: "#475569", lineHeight: 1.7, fontSize: 14 }}>{entry.preview}</p>
+      ) : null}
     </article>
   );
 }
