@@ -108,15 +108,16 @@ export default function ScoreReportPrintModal({ result, studentLevel, onClose })
               )}
 
               <footer style={footerStyle}>
-                <p style={footerNoteStyle}>
-                  본 성적표는 AMY ENGLISH LAB 시험 시스템에서 자동 생성되었습니다.
-                </p>
-                <div style={stampRowStyle}>
-                  <div style={stampBoxStyle}>
-                    <span style={stampLabelStyle}>원장</span>
-                    <div style={stampCircleStyle}>직인</div>
+                <div style={footerRowStyle} className="score-report-footer-row">
+                  <div style={signatureBlockStyle}>
+                    <span style={signatureLabelStyle}>담당</span>
+                    <span className="score-report-signature" style={signatureNameStyle}>
+                      Amy Lee
+                    </span>
                   </div>
-                  <p style={footerDateStyle}>발행일: {formatTestDate(new Date().toISOString().slice(0, 10))}</p>
+                  <p style={footerDateStyle}>
+                    발행일: {formatTestDate(new Date().toISOString().slice(0, 10))}
+                  </p>
                 </div>
               </footer>
             </article>
@@ -277,48 +278,43 @@ const detailCellStyle = {
 
 const footerStyle = {
   borderTop: "1px solid #cbd5e1",
-  paddingTop: 16,
-  marginTop: 8,
+  paddingTop: 20,
+  paddingBottom: 4,
+  marginTop: 12,
 };
 
-const footerNoteStyle = {
-  margin: "0 0 16px",
-  fontSize: 12,
-  color: "#64748b",
-  textAlign: "center",
-};
-
-const stampRowStyle = {
+const footerRowStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-end",
-  gap: 16,
+  gap: 24,
+  minHeight: 72,
 };
 
-const stampBoxStyle = {
+const signatureBlockStyle = {
   display: "flex",
   flexDirection: "column",
-  alignItems: "center",
-  gap: 8,
+  alignItems: "flex-start",
+  gap: 2,
 };
 
-const stampLabelStyle = {
-  fontSize: 13,
+const signatureLabelStyle = {
+  fontSize: 12,
   fontWeight: 700,
-  color: "#334155",
+  color: "#64748b",
+  letterSpacing: "0.06em",
 };
 
-const stampCircleStyle = {
-  width: 72,
-  height: 72,
-  borderRadius: "50%",
-  border: "2px dashed #94a3b8",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#94a3b8",
+const signatureNameStyle = {
+  fontFamily: "'Great Vibes', 'Alex Brush', cursive",
+  fontSize: "2.1rem",
+  fontWeight: 400,
+  color: "#0f172a",
+  lineHeight: 1.1,
+  marginTop: 2,
+  paddingBottom: 2,
+  transform: "rotate(-2deg)",
+  transformOrigin: "left bottom",
 };
 
 const footerDateStyle = {
@@ -326,6 +322,8 @@ const footerDateStyle = {
   fontSize: 13,
   color: "#475569",
   fontWeight: 600,
+  whiteSpace: "nowrap",
+  paddingBottom: 6,
 };
 
 const printBtnStyle = {
