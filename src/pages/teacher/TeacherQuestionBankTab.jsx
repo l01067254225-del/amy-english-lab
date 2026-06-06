@@ -3,21 +3,33 @@ import {
   SUBJECT_OPTIONS,
   addQuestion,
   addQuestionsBulk,
+  createPassageId,
   formatQuestionAnswer,
   getSubjectLabel,
   getSubjectMeta,
   loadQuestionBank,
   removeQuestion,
+  removeReadingPassageGroup,
 } from "../../utils/questionBankStorage";
 import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
-import { parseQuestionText, getTextPasteExample } from "../../utils/parseQuestionText";
+import {
+  parseQuestionText,
+  getTextPasteExample,
+  getTextPasteHint,
+} from "../../utils/parseQuestionText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
+import {
+  buildQuestionDisplayList,
+  truncatePassage,
+} from "../../utils/readingPassage";
 
 export default function TeacherQuestionBankTab() {
   const fileInputRef = useRef(null);
   const [questions, setQuestions] = useState(() => loadQuestionBank());
   const [questionType, setQuestionType] = useState("subjective");
   const [subject, setSubject] = useState("vocab");
+  const [passage, setPassage] = useState("");
+  const [passageId, setPassageId] = useState(null);
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
   const [options, setOptions] = useState(EMPTY_MCQ_OPTIONS);
@@ -30,6 +42,8 @@ export default function TeacherQuestionBankTab() {
   const [pasteSubject, setPasteSubject] = useState("grammar");
   const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
 
+  const isReading = subject === "reading";
+
   const filteredQuestions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return questions.filter((q) => {
@@ -38,6 +52,7 @@ export default function TeacherQuestionBankTab() {
       const haystack = [
         q.prompt,
         q.answer,
+        q.passage,
         getSubjectLabel(q.subject),
         ...(q.options ?? []),
       ]
@@ -46,6 +61,37 @@ export default function TeacherQuestionBankTab() {
       return haystack.includes(query);
     });
   }, [questions, searchQuery, filterSubject]);
+
+  const displayList = useMemo(
+    () => buildQuestionDisplayList(filteredQuestions),
+    [filteredQuestions]
+  );
+
+  const handleSubjectChange = (nextSubject) => {
+    setSubject(nextSubject);
+    if (nextSubject !== "reading") {
+      setPassage("");
+      setPassageId(null);
+    }
+  };
+
+  const handlePassageChange = (value) => {
+    setPassage(value);
+    if (!value.trim()) {
+      setPassageId(null);
+      return;
+    }
+    setPassageId((prev) => prev ?? createPassageId());
+  };
+
+  const handleNewPassage = () => {
+    setPassage("");
+    setPassageId(null);
+    setPrompt("");
+    setAnswer("");
+    setOptions(EMPTY_MCQ_OPTIONS);
+    setFormError("");
+  };
 
   const resetForm = () => {
     setPrompt("");
@@ -76,15 +122,32 @@ export default function TeacherQuestionBankTab() {
       return;
     }
 
+    if (isReading && !passage.trim()) {
+      setFormError("Reading 과목은 지문(Passage)을 입력해 주세요.");
+      return;
+    }
+
+    const activePassageId = isReading ? passageId ?? createPassageId() : null;
+    if (isReading && !passageId) {
+      setPassageId(activePassageId);
+    }
+
     const next = addQuestion({
       subject,
       prompt,
       answer,
       type: questionType,
       options: questionType === "objective" ? options : [],
+      passage: isReading ? passage : "",
+      passageId: activePassageId,
     });
     setQuestions(next);
     resetForm();
+  };
+
+  const handleDeleteGroup = (groupPassageId) => {
+    if (!confirm("이 지문과 연결된 모든 문제를 삭제할까요?")) return;
+    setQuestions(removeReadingPassageGroup(groupPassageId));
   };
 
   const handleDelete = (id) => {
@@ -174,6 +237,7 @@ export default function TeacherQuestionBankTab() {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .qb-passage-panel,
         .qb-options-panel {
           animation: qbSlideDown 0.35s ease forwards;
           overflow: hidden;
@@ -202,7 +266,11 @@ export default function TeacherQuestionBankTab() {
             <div style={fieldGridStyle}>
               <label style={fieldLabelStyle}>
                 과목
-                <select value={subject} onChange={(e) => setSubject(e.target.value)} style={selectStyle}>
+                <select
+                  value={subject}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                  style={selectStyle}
+                >
                   {SUBJECT_OPTIONS.map((opt) => (
                     <option key={opt.id} value={opt.id}>
                       {opt.label}
@@ -211,8 +279,36 @@ export default function TeacherQuestionBankTab() {
                 </select>
               </label>
 
+              {isReading && (
+                <div className="qb-passage-panel" style={{ gridColumn: "1 / -1" }}>
+                  <div style={passageHeaderRowStyle}>
+                    <label style={{ ...fieldLabelStyle, flex: 1, marginBottom: 0 }}>
+                      지문 (Passage)
+                      <textarea
+                        value={passage}
+                        onChange={(e) => handlePassageChange(e.target.value)}
+                        placeholder="독해 지문 전체를 입력하세요. 동일 지문으로 여러 문제를 연속 등록할 수 있습니다."
+                        style={passageTextareaStyle}
+                      />
+                    </label>
+                  </div>
+                  <div style={passageMetaRowStyle}>
+                    <span style={passageMetaStyle}>
+                      {passageId
+                        ? "현재 지문 그룹 ID가 연결되어 있습니다. 같은 지문으로 문제를 계속 추가할 수 있어요."
+                        : "지문을 입력하면 문제들이 하나의 독해 세트로 묶입니다."}
+                    </span>
+                    {passage.trim() && (
+                      <button type="button" onClick={handleNewPassage} style={newPassageBtnStyle}>
+                        새 지문 시작
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <label style={{ ...fieldLabelStyle, gridColumn: "1 / -1" }}>
-                문제 (단어 / 문장)
+                {isReading ? "문제 (지문 하위 문항)" : "문제 (단어 / 문장)"}
                 <input
                   type="text"
                   value={prompt}
@@ -365,14 +461,12 @@ export default function TeacherQuestionBankTab() {
         <textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
-          placeholder={getTextPasteExample()}
+          placeholder={getTextPasteExample(pasteSubject)}
           style={pasteTextareaStyle}
         />
 
         <div style={pasteFooterStyle}>
-          <p style={pasteHintStyle}>
-            ①~⑤ 또는 1)~5) 보기, &apos;정답: N&apos; 형식을 자동 인식합니다. 문항은 빈 줄로 구분하세요.
-          </p>
+          <p style={pasteHintStyle}>{getTextPasteHint(pasteSubject)}</p>
           <button
             type="button"
             onClick={handlePasteAnalyze}
@@ -397,7 +491,7 @@ export default function TeacherQuestionBankTab() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="문제, 정답, 보기 검색..."
+            placeholder="문제, 정답, 지문, 보기 검색..."
             style={searchStyle}
           />
         </div>
@@ -431,9 +525,23 @@ export default function TeacherQuestionBankTab() {
           </div>
         ) : (
           <div style={cardListStyle}>
-            {filteredQuestions.map((q) => (
-              <QuestionCard key={q.id} question={q} onDelete={handleDelete} />
-            ))}
+            {displayList.map((item) =>
+              item.type === "readingGroup" ? (
+                <ReadingPassageGroupCard
+                  key={item.passageId}
+                  passage={item.passage}
+                  questions={item.questions}
+                  onDeleteQuestion={handleDelete}
+                  onDeleteGroup={handleDeleteGroup}
+                />
+              ) : (
+                <QuestionCard
+                  key={item.question.id}
+                  question={item.question}
+                  onDelete={handleDelete}
+                />
+              )
+            )}
           </div>
         )}
       </section>
@@ -482,9 +590,70 @@ function FilterChip({ active, label, onClick, color = "#475569", bg = "#f1f5f9" 
   );
 }
 
+function ReadingPassageGroupCard({ passage, questions, onDeleteQuestion, onDeleteGroup }) {
+  const subjectMeta = getSubjectMeta("reading");
+
+  return (
+    <article
+      style={{
+        ...cardStyle,
+        borderLeft: `4px solid ${subjectMeta.color}`,
+        background: "#f5f3ff",
+      }}
+    >
+      <div style={cardTopStyle}>
+        <div style={badgeRowStyle}>
+          <span
+            style={{
+              ...subjectBadgeStyle,
+              color: subjectMeta.color,
+              background: subjectMeta.bg,
+            }}
+          >
+            Reading · 지문 세트
+          </span>
+          <span style={readingCountBadgeStyle}>문항 {questions.length}개</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onDeleteGroup(questions[0]?.passageId)}
+          style={deleteBtnStyle}
+        >
+          세트 삭제
+        </button>
+      </div>
+
+      <div style={passagePreviewBoxStyle}>
+        <span style={passagePreviewLabelStyle}>지문 미리보기</span>
+        <p style={passagePreviewTextStyle}>{truncatePassage(passage, 160)}</p>
+      </div>
+
+      <div style={nestedQuestionsStyle}>
+        {questions.map((question, index) => (
+          <div key={question.id} style={nestedQuestionWrapStyle}>
+            <div style={nestedQuestionHeaderStyle}>
+              <span style={nestedQuestionNumStyle}>Q{index + 1}</span>
+              <button
+                type="button"
+                onClick={() => onDeleteQuestion(question.id)}
+                style={nestedDeleteBtnStyle}
+              >
+                삭제
+              </button>
+            </div>
+            <QuestionCardBody question={question} compact />
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function QuestionCard({ question, onDelete }) {
   const subjectMeta = getSubjectMeta(question.subject);
   const isObjective = question.type === "objective";
+  const showPassageSnippet =
+    question.subject === "reading" && question.passage && !question.passageId;
 
   return (
     <article
@@ -522,7 +691,24 @@ function QuestionCard({ question, onDelete }) {
         </button>
       </div>
 
-      <p style={promptStyle}>{question.prompt}</p>
+      {showPassageSnippet && (
+        <div style={passagePreviewBoxStyle}>
+          <span style={passagePreviewLabelStyle}>지문</span>
+          <p style={passagePreviewTextStyle}>{truncatePassage(question.passage, 100)}</p>
+        </div>
+      )}
+
+      <QuestionCardBody question={question} />
+    </article>
+  );
+}
+
+function QuestionCardBody({ question, compact = false }) {
+  const isObjective = question.type === "objective";
+
+  return (
+    <>
+      <p style={compact ? nestedPromptStyle : promptStyle}>{question.prompt}</p>
 
       {isObjective && question.options.length > 0 && (
         <div style={optionsListStyle}>
@@ -549,7 +735,7 @@ function QuestionCard({ question, onDelete }) {
         <span style={answerLabelStyle}>정답</span>
         <span style={answerValueStyle}>{formatQuestionAnswer(question)}</span>
       </div>
-    </article>
+    </>
   );
 }
 
@@ -998,4 +1184,135 @@ const analyzeBtnStyle = {
   fontSize: 14,
   boxShadow: "0 8px 20px rgba(124, 58, 237, 0.25)",
   whiteSpace: "nowrap",
+};
+
+const passageTextareaStyle = {
+  width: "100%",
+  minHeight: 140,
+  marginTop: 8,
+  padding: "14px 16px",
+  borderRadius: 12,
+  border: "1px solid #ddd6fe",
+  boxSizing: "border-box",
+  fontSize: 14,
+  lineHeight: 1.75,
+  color: "#0f172a",
+  background: "#faf5ff",
+  resize: "vertical",
+  fontFamily: "'Malgun Gothic', Arial, sans-serif",
+};
+
+const passageHeaderRowStyle = {
+  display: "flex",
+  gap: 12,
+  alignItems: "stretch",
+};
+
+const passageMetaRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  marginTop: 10,
+  flexWrap: "wrap",
+};
+
+const passageMetaStyle = {
+  fontSize: 12,
+  color: "#7c3aed",
+  fontWeight: 600,
+  lineHeight: 1.5,
+};
+
+const newPassageBtnStyle = {
+  padding: "7px 12px",
+  borderRadius: 8,
+  border: "1px solid #ddd6fe",
+  background: "white",
+  color: "#6d28d9",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 12,
+};
+
+const readingCountBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 800,
+  background: "#ede9fe",
+  color: "#5b21b6",
+};
+
+const passagePreviewBoxStyle = {
+  marginBottom: 12,
+  padding: "12px 14px",
+  borderRadius: 12,
+  background: "white",
+  border: "1px solid #e9d5ff",
+};
+
+const passagePreviewLabelStyle = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#7c3aed",
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  marginBottom: 6,
+};
+
+const passagePreviewTextStyle = {
+  margin: 0,
+  fontSize: 13,
+  lineHeight: 1.7,
+  color: "#475569",
+};
+
+const nestedQuestionsStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const nestedQuestionWrapStyle = {
+  background: "white",
+  borderRadius: 12,
+  padding: "14px 16px",
+  border: "1px solid #e9d5ff",
+};
+
+const nestedQuestionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 8,
+};
+
+const nestedQuestionNumStyle = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#7c3aed",
+  background: "#f5f3ff",
+  padding: "4px 10px",
+  borderRadius: 999,
+};
+
+const nestedDeleteBtnStyle = {
+  padding: "4px 10px",
+  borderRadius: 8,
+  border: "1px solid #fecaca",
+  background: "white",
+  color: "#dc2626",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 11,
+};
+
+const nestedPromptStyle = {
+  margin: "0 0 10px",
+  fontSize: 15,
+  fontWeight: 700,
+  color: "#0f172a",
+  lineHeight: 1.5,
 };

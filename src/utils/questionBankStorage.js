@@ -1,4 +1,5 @@
 import { MAX_MCQ_OPTIONS } from "./mcqOptions";
+import { createPassageId } from "./readingPassage";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
@@ -44,26 +45,58 @@ export function createQuestionId() {
   return `qb-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export { createPassageId };
+
+function applyReadingFields(item, subject, passage, passageId) {
+  if (subject !== "reading") return item;
+  const passageText = String(passage ?? "").trim();
+  return {
+    ...item,
+    passage: passageText,
+    passageId: passageId || createPassageId(),
+  };
+}
+
 export function normalizeQuestion(question) {
   const type = question.type === "objective" ? "objective" : "subjective";
   const options =
     type === "objective" && Array.isArray(question.options)
       ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())
       : [];
-  return {
+
+  const base = {
     ...question,
     type,
     options,
   };
+
+  if (question.subject === "reading") {
+    return {
+      ...base,
+      passage: String(question.passage ?? "").trim(),
+      passageId: question.passageId || undefined,
+    };
+  }
+
+  const { passage: _p, passageId: _pid, ...rest } = base;
+  return rest;
 }
 
 export function loadQuestionBank() {
   return readJson(QUESTION_BANK_KEY).map(normalizeQuestion);
 }
 
-export function addQuestion({ subject, prompt, answer, type = "subjective", options = [] }) {
+export function addQuestion({
+  subject,
+  prompt,
+  answer,
+  type = "subjective",
+  options = [],
+  passage = "",
+  passageId = null,
+}) {
   const normalizedType = type === "objective" ? "objective" : "subjective";
-  const item = {
+  let item = {
     id: createQuestionId(),
     type: normalizedType,
     subject,
@@ -75,6 +108,8 @@ export function addQuestion({ subject, prompt, answer, type = "subjective", opti
         : [],
     createdAt: new Date().toISOString(),
   };
+  item = applyReadingFields(item, subject, passage, passageId);
+
   const next = [item, ...loadQuestionBank()];
   writeJson(QUESTION_BANK_KEY, next);
   return next;
@@ -84,7 +119,7 @@ export function addQuestionsBulk(items) {
   const baseTime = Date.now();
   const newItems = items.map((item, index) => {
     const type = item.type === "objective" ? "objective" : "subjective";
-    return {
+    let question = {
       id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
       type,
       subject: item.subject,
@@ -96,6 +131,13 @@ export function addQuestionsBulk(items) {
           : [],
       createdAt: new Date().toISOString(),
     };
+    question = applyReadingFields(
+      question,
+      item.subject,
+      item.passage,
+      item.passageId
+    );
+    return question;
   });
   const next = [...newItems, ...loadQuestionBank()];
   writeJson(QUESTION_BANK_KEY, next);
@@ -104,6 +146,12 @@ export function addQuestionsBulk(items) {
 
 export function removeQuestion(id) {
   const next = loadQuestionBank().filter((q) => q.id !== id);
+  writeJson(QUESTION_BANK_KEY, next);
+  return next;
+}
+
+export function removeReadingPassageGroup(passageId) {
+  const next = loadQuestionBank().filter((q) => q.passageId !== passageId);
   writeJson(QUESTION_BANK_KEY, next);
   return next;
 }

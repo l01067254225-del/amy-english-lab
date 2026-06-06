@@ -1,4 +1,5 @@
 import { resolveSubject } from "./parseQuestionCsvHelpers";
+import { createPassageId } from "./readingPassage";
 
 const CIRCLED_NUMBERS = "①②③④⑤";
 const OPTION_LINE =
@@ -7,6 +8,7 @@ const ANSWER_LINE =
   /^(?:정답|답|answer|Answer|ANSWER)\s*[:：]?\s*([①②③④⑤1-5]|\(\s*[1-5]\s*\))\s*$/iu;
 const QUESTION_LINE = /^(?:문제|Q|Question)\s*[:：]?\s*(.+)$/iu;
 const NUMBERED_QUESTION = /^(\d+)\.\s*(.+)$/;
+const PASSAGE_HEADER = /^\[지문\]|^지문\s*[:：]/i;
 
 function normalizeAnswerToken(token) {
   const value = String(token ?? "").trim();
@@ -44,7 +46,56 @@ function splitQuestionBlocks(text) {
   return grouped.length > 0 ? grouped : [normalized];
 }
 
-function parseBlock(block, defaultSubject) {
+function stripPassageHeader(text) {
+  return text
+    .replace(/^\[지문\]\s*/i, "")
+    .replace(/^지문\s*[:：]\s*/i, "")
+    .trim();
+}
+
+function findFirstQuestionLineIndex(lines) {
+  return lines.findIndex((line) => NUMBERED_QUESTION.test(line.trim()));
+}
+
+function extractPassageAndQuestions(text) {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  const lines = normalized.split("\n");
+
+  const explicitPassageIdx = lines.findIndex((line) => PASSAGE_HEADER.test(line.trim()));
+  if (explicitPassageIdx >= 0) {
+    const afterHeader = lines.slice(explicitPassageIdx);
+    const firstQuestionInRest = findFirstQuestionLineIndex(
+      afterHeader.map((line) => line.trim())
+    );
+    if (firstQuestionInRest > 0) {
+      const passageLines = afterHeader.slice(0, firstQuestionInRest);
+      const questionLines = afterHeader.slice(firstQuestionInRest);
+      return {
+        passage: stripPassageHeader(passageLines.join("\n")),
+        questionsText: questionLines.join("\n"),
+      };
+    }
+  }
+
+  const trimmedLines = lines.map((line) => line.trim());
+  const firstQuestionIdx = findFirstQuestionLineIndex(trimmedLines);
+  if (firstQuestionIdx <= 0) return null;
+
+  const passageLines = lines.slice(0, firstQuestionIdx);
+  const questionLines = lines.slice(firstQuestionIdx);
+  const passage = stripPassageHeader(passageLines.join("\n").trim());
+
+  if (passage.length < 40 && !PASSAGE_HEADER.test(passageLines.join("\n"))) {
+    return null;
+  }
+
+  return {
+    passage,
+    questionsText: questionLines.join("\n"),
+  };
+}
+
+function parseBlock(block, defaultSubject, readingContext = null) {
   const lines = block
     .split("\n")
     .map((line) => line.trim())
@@ -56,7 +107,7 @@ function parseBlock(block, defaultSubject) {
 
   let prompt = "";
   let answer = "";
-  let subject = defaultSubject;
+  let subject = readingContext?.subject ?? defaultSubject;
   const options = [];
   const promptLines = [];
 
@@ -111,6 +162,15 @@ function parseBlock(block, defaultSubject) {
     return { error: "문제 문장을 찾지 못했습니다." };
   }
 
+  const readingFields =
+    readingContext && readingContext.passage
+      ? {
+          subject: "reading",
+          passage: readingContext.passage,
+          passageId: readingContext.passageId,
+        }
+      : { subject };
+
   if (options.length >= 2) {
     if (!answer) {
       return { error: `'${prompt.slice(0, 24)}...' 정답을 찾지 못했습니다.` };
@@ -121,7 +181,7 @@ function parseBlock(block, defaultSubject) {
     return {
       item: {
         type: "objective",
-        subject,
+        ...readingFields,
         prompt,
         answer,
         options: options.slice(0, 5),
@@ -143,7 +203,7 @@ function parseBlock(block, defaultSubject) {
   return {
     item: {
       type: "subjective",
-      subject,
+      ...readingFields,
       prompt,
       answer,
       options: [],
@@ -151,7 +211,44 @@ function parseBlock(block, defaultSubject) {
   };
 }
 
+function parseReadingText(text, defaultSubject) {
+  const extracted = extractPassageAndQuestions(text);
+  if (!extracted || !extracted.passage || !extracted.questionsText.trim()) {
+    return null;
+  }
+
+  const passageId = createPassageId();
+  const readingContext = {
+    subject: "reading",
+    passage: extracted.passage,
+    passageId,
+  };
+
+  const blocks = splitQuestionBlocks(extracted.questionsText);
+  const items = [];
+  const errors = [];
+
+  blocks.forEach((block, index) => {
+    const result = parseBlock(block, defaultSubject, readingContext);
+    if (result.error) {
+      errors.push(`Reading ${index + 1}번째 문제: ${result.error}`);
+      return;
+    }
+    items.push(result.item);
+  });
+
+  if (items.length === 0) return null;
+  return { items, errors };
+}
+
 export function parseQuestionText(text, { defaultSubject = "grammar" } = {}) {
+  if (defaultSubject === "reading" || PASSAGE_HEADER.test(text)) {
+    const readingResult = parseReadingText(text, defaultSubject);
+    if (readingResult && readingResult.items.length > 0) {
+      return readingResult;
+    }
+  }
+
   const blocks = splitQuestionBlocks(text);
   const items = [];
   const errors = [];
@@ -168,7 +265,26 @@ export function parseQuestionText(text, { defaultSubject = "grammar" } = {}) {
   return { items, errors };
 }
 
-export function getTextPasteExample() {
+export function getTextPasteExample(subject = "grammar") {
+  if (subject === "reading") {
+    return `[지문]
+Tom is a good student. Every morning, he goes to school. He likes bread and drinks milk at breakfast. His best friend is Amy.
+
+1. Where does Tom go every morning?
+① home
+② school
+③ park
+④ hospital
+정답: 2
+
+2. Who is Tom's best friend?
+① Amy
+② Kate
+③ Lucy
+④ Jack
+정답: 1`;
+  }
+
   return `1. She ___ to school every day.
 ① go
 ② goes
@@ -183,4 +299,11 @@ export function getTextPasteExample() {
 ③ Incheon
 ④ Daegu
 정답: 1`;
+}
+
+export function getTextPasteHint(subject = "grammar") {
+  if (subject === "reading") {
+    return "Reading: 상단 긴 글은 지문, 아래 1. 2. 번호 문항은 개별 문제로 자동 분리됩니다. [지문] 표시 또는 빈 줄 구분을 권장합니다.";
+  }
+  return "①~⑤ 또는 1)~5) 보기, '정답: N' 형식을 자동 인식합니다. 문항은 빈 줄로 구분하세요.";
 }
