@@ -17,7 +17,7 @@ import {
   thTdStyle,
 } from "./teacherStyles";
 
-const LEVEL_OPTIONS = ["A2-1", "A2-2", "A1-1", "A1-2", "PA1-1", "PA1-2", "HB1-2"];
+import { LEVEL_OPTIONS } from "../../utils/levels";
 
 export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const [students, setStudents] = useState(() => loadStudents());

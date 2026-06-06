@@ -3,23 +3,33 @@ import QuestionCard from "../components/QuestionCard";
 import SiteHeader from "../components/SiteHeader";
 import StudentLevelCompareDashboard from "../components/StudentLevelCompareDashboard";
 import StudentReadingTest from "./student/StudentReadingTest";
-import { getQuestionsByTestId, TESTS } from "../data/questions";
 import {
   fetchAllResults,
   formatDate,
   saveResult,
 } from "../services/resultsApi";
-import { flattenQuestions, gradeQuestion } from "../utils/grade";
-import { getReadingTestSet } from "../utils/readingTestData";
+import {
+  buildExamTakeView,
+  shouldShowReadingPassage,
+} from "../utils/examTakeView";
+import { gradeQuestion } from "../utils/grade";
 import { getStudentLevel } from "../utils/levelStats";
+import { formatTestDate, getTodayDateString } from "../utils/levels";
+import { getAvailableExamsForStudent } from "../utils/questionBankStorage";
 
 export default function StudentApp({ student, onLogout }) {
   const studentKey = student.id;
+  const today = getTodayDateString();
+  const studentLevel = student.level || getStudentLevel(studentKey);
 
-  const [selectedTestId, setSelectedTestId] = useState("vocab");
+  const availableExams = useMemo(
+    () => getAvailableExamsForStudent(studentLevel, today),
+    [studentLevel, today]
+  );
+
+  const [selectedExamId, setSelectedExamId] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [answers, setAnswers] = useState({});
-  const [score, setScore] = useState(null);
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [savedResults, setSavedResults] = useState([]);
   const [selectedResultId, setSelectedResultId] = useState(null);
@@ -38,40 +48,51 @@ export default function StudentApp({ student, onLogout }) {
     loadMyResults();
   }, [loadMyResults]);
 
-  const readingTestSet = useMemo(() => {
-    if (selectedTestId !== "reading") return null;
-    return getReadingTestSet();
-  }, [selectedTestId]);
-
-  const baseQuestions = useMemo(
-    () => getQuestionsByTestId(selectedTestId),
-    [selectedTestId]
-  );
-
-  const flatQuestions = useMemo(() => {
-    if (selectedTestId === "reading" && readingTestSet) {
-      return readingTestSet.questions;
+  useEffect(() => {
+    if (availableExams.length === 0) {
+      setSelectedExamId(null);
+      return;
     }
-    return flattenQuestions(baseQuestions);
-  }, [selectedTestId, readingTestSet, baseQuestions]);
+    if (!availableExams.some((exam) => exam.id === selectedExamId)) {
+      setSelectedExamId(availableExams[0].id);
+    }
+  }, [availableExams, selectedExamId]);
 
+  const selectedExam =
+    availableExams.find((exam) => exam.id === selectedExamId) ?? availableExams[0] ?? null;
+
+  const examView = useMemo(() => {
+    if (!selectedExam) return null;
+    return buildExamTakeView(selectedExam.questions);
+  }, [selectedExam]);
+
+  const flatQuestions = examView?.questions ?? [];
   const total = flatQuestions.length;
-  const selectedTest = TESTS.find((t) => t.id === selectedTestId);
-  const isReadingMode = selectedTestId === "reading" && readingTestSet;
-  const firstReadingId = flatQuestions.find((q) => q.type === "fill")?.readingId;
+  const isReadingMode = examView?.mode === "reading";
 
   const setAnswer = (qid, value) => {
     setAnswers((prev) => ({ ...prev, [qid]: value }));
   };
 
-  const reset = () => {
+  const resetExamState = () => {
     setAnswers({});
     setSubmitted(false);
-    setScore(null);
+  };
+
+  const reset = () => {
+    resetExamState();
+    setShowScorePanel(false);
+  };
+
+  const handleSelectExam = (examId) => {
+    setSelectedExamId(examId);
+    resetExamState();
     setShowScorePanel(false);
   };
 
   const submit = async () => {
+    if (!selectedExam) return;
+
     let s = 0;
     const details = flatQuestions.map((q, idx) => {
       const earned = gradeQuestion(q, answers[q.id]);
@@ -82,8 +103,8 @@ export default function StudentApp({ student, onLogout }) {
     const record = {
       studentId: studentKey,
       studentName: student.name || studentKey,
-      testId: selectedTestId,
-      testTitle: selectedTest?.title ?? selectedTestId,
+      testId: selectedExam.id,
+      testTitle: selectedExam.title,
       score: s,
       total,
       submittedAt: new Date().toISOString(),
@@ -98,7 +119,6 @@ export default function StudentApp({ student, onLogout }) {
       );
       setSavedResults(mine);
       setSelectedResultId(mine[0]?.id ?? null);
-      setScore(s);
       setSubmitted(true);
       setShowScorePanel(true);
     } catch (error) {
@@ -120,14 +140,6 @@ export default function StudentApp({ student, onLogout }) {
 
   const selectedResult =
     savedResults.find((r) => r.id === selectedResultId) ?? savedResults[0] ?? null;
-  const studentLevel = student.level || getStudentLevel(studentKey);
-
-  const testDescription = {
-    vocab: "뜻 30문항 + 철자 30문항 (총 60문항)",
-    writing: "문장 단어 배열 10문항",
-    grammar: "객관식 7문항 + 주관식 3문항",
-    reading: "지문 분할 화면 · 한 문제씩 집중 풀이",
-  };
 
   return (
     <div
@@ -141,7 +153,7 @@ export default function StudentApp({ student, onLogout }) {
       <div style={{ maxWidth: isReadingMode ? 1280 : 1000, margin: "0 auto" }}>
         <SiteHeader
           title="AMY ENGLISH LAB"
-          subtitle={`${student.name} (${student.id})`}
+          subtitle={`${student.name} (${student.id}) · ${studentLevel || "레벨 미지정"} · ${formatTestDate(today)}`}
           onLogout={onLogout}
         />
 
@@ -152,32 +164,28 @@ export default function StudentApp({ student, onLogout }) {
             gap: 10,
             alignItems: "center",
             marginBottom: 12,
+            flexWrap: "wrap",
           }}
         >
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {TESTS.map((t) => (
+            {availableExams.map((exam) => (
               <button
-                key={t.id}
+                key={exam.id}
                 type="button"
-                onClick={() => {
-                  setSelectedTestId(t.id);
-                  setAnswers({});
-                  setSubmitted(false);
-                  setScore(null);
-                  setShowScorePanel(false);
-                }}
+                onClick={() => handleSelectExam(exam.id)}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 999,
                   border: "1px solid #ddd",
                   background:
-                    !showScorePanel && selectedTestId === t.id ? "#2563eb" : "white",
-                  color: !showScorePanel && selectedTestId === t.id ? "white" : "black",
+                    !showScorePanel && selectedExam?.id === exam.id ? "#2563eb" : "white",
+                  color:
+                    !showScorePanel && selectedExam?.id === exam.id ? "white" : "black",
                   cursor: "pointer",
                   fontWeight: 700,
                 }}
               >
-                {t.title}
+                {exam.title}
               </button>
             ))}
           </div>
@@ -299,7 +307,14 @@ export default function StudentApp({ student, onLogout }) {
                       level={studentLevel}
                     />
 
-                    <p style={{ margin: "16px 0 8px", color: "#64748b", fontSize: 13, fontWeight: 700 }}>
+                    <p
+                      style={{
+                        margin: "16px 0 8px",
+                        color: "#64748b",
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
                       문항별 결과
                     </p>
                     <ul
@@ -337,7 +352,31 @@ export default function StudentApp({ student, onLogout }) {
           </div>
         )}
 
-        {!showScorePanel && (
+        {!showScorePanel && availableExams.length === 0 && (
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, color: "#0f172a" }}>
+              오늘 응시할 시험이 없습니다
+            </h2>
+            <p style={{ margin: 0, color: "#64748b", lineHeight: 1.7 }}>
+              {studentLevel
+                ? `${studentLevel} 레벨 · ${formatTestDate(today)} 기준으로`
+                : "레벨 정보가 없어"}{" "}
+              배정된 시험이 없습니다.
+              <br />
+              다른 날짜나 레벨의 시험은 표시되지 않습니다.
+            </p>
+          </div>
+        )}
+
+        {!showScorePanel && selectedExam && examView && (
           <div
             style={{
               background: isReadingMode ? "transparent" : "white",
@@ -347,14 +386,14 @@ export default function StudentApp({ student, onLogout }) {
             }}
           >
             <p style={{ margin: "0 0 16px", color: "#64748b" }}>
-              <strong>{selectedTest?.title}</strong> · {testDescription[selectedTestId]} ·
-              문항당 1점 (총 {total}점)
+              <strong>{selectedExam.title}</strong> · {selectedExam.targetLevel} ·{" "}
+              {formatTestDate(selectedExam.testDate)} · 문항당 1점 (총 {total}점)
             </p>
 
             {isReadingMode ? (
               <StudentReadingTest
-                passage={readingTestSet.passage}
-                questions={readingTestSet.questions}
+                passage={examView.passage}
+                questions={flatQuestions}
                 answers={answers}
                 submitted={submitted}
                 saving={saving}
@@ -373,12 +412,7 @@ export default function StudentApp({ student, onLogout }) {
                       userAnswer={answers[q.id] ?? ""}
                       submitted={submitted}
                       onAnswer={setAnswer}
-                      showPassage={
-                        q.type === "fill" && q.readingId === firstReadingId && q.num === 1
-                      }
-                      showWordBank={
-                        q.type === "fill" && q.readingId === firstReadingId && q.num === 1
-                      }
+                      showPassage={shouldShowReadingPassage(q, flatQuestions, idx)}
                     />
                   ))}
                 </div>

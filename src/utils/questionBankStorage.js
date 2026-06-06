@@ -1,3 +1,4 @@
+import { getTodayDateString } from "./levels";
 import { MAX_MCQ_OPTIONS } from "./mcqOptions";
 import { createPassageId } from "./readingPassage";
 
@@ -68,6 +69,7 @@ export function normalizeQuestion(question) {
     ...question,
     type,
     options,
+    level: String(question.level ?? "").trim(),
   };
 
   if (question.subject === "reading") {
@@ -94,6 +96,7 @@ export function addQuestion({
   options = [],
   passage = "",
   passageId = null,
+  level = "",
 }) {
   const normalizedType = type === "objective" ? "objective" : "subjective";
   let item = {
@@ -106,6 +109,7 @@ export function addQuestion({
       normalizedType === "objective"
         ? options.map((option) => String(option).trim())
         : [],
+    level: String(level ?? "").trim(),
     createdAt: new Date().toISOString(),
   };
   item = applyReadingFields(item, subject, passage, passageId);
@@ -129,6 +133,7 @@ export function addQuestionsBulk(items) {
         type === "objective" && Array.isArray(item.options)
           ? item.options.map((option) => String(option).trim())
           : [],
+      level: String(item.level ?? "").trim(),
       createdAt: new Date().toISOString(),
     };
     question = applyReadingFields(
@@ -170,10 +175,12 @@ export function loadExamSets() {
   return readJson(EXAM_SETS_KEY);
 }
 
-export function addExamSet({ title, questions }) {
+export function addExamSet({ title, questions, targetLevel, testDate }) {
   const item = {
     id: `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: title.trim(),
+    targetLevel: String(targetLevel ?? "").trim(),
+    testDate: String(testDate ?? "").trim(),
     questionIds: questions.map((q) => q.id),
     questions: questions.map(normalizeQuestion),
     createdAt: new Date().toISOString(),
@@ -182,3 +189,20 @@ export function addExamSet({ title, questions }) {
   writeJson(EXAM_SETS_KEY, next);
   return next;
 }
+
+export function filterQuestionsByLevel(questions, targetLevel) {
+  if (!targetLevel) return questions;
+  return questions.filter((q) => q.level === targetLevel);
+}
+
+export function getAvailableExamsForStudent(level, date = getTodayDateString()) {
+  const studentLevel = String(level ?? "").trim();
+  const today = String(date ?? "").trim();
+  if (!studentLevel || !today) return [];
+
+  return loadExamSets().filter(
+    (exam) => exam.targetLevel === studentLevel && exam.testDate === today
+  );
+}
+
+export { getTodayDateString };

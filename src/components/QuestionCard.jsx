@@ -118,6 +118,26 @@ export default function QuestionCard({
           submitted={submitted}
           onAnswer={onAnswer}
         />
+      ) : question.type === "objective" ? (
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          {(question.options ?? []).map((option, optionIndex) => (
+            <label
+              key={`${question.id}-opt-${optionIndex}`}
+              style={{ display: "flex", gap: 8, alignItems: "center" }}
+            >
+              <input
+                type="radio"
+                name={question.id}
+                checked={userAnswer === option}
+                disabled={submitted}
+                onChange={() => onAnswer(question.id, option)}
+              />
+              <span>
+                {optionIndex + 1}. {option}
+              </span>
+            </label>
+          ))}
+        </div>
       ) : question.type === "mcq" ? (
         <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
           {question.choices.map((choice) => (

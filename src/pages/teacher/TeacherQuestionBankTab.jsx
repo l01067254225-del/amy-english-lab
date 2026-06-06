@@ -18,6 +18,7 @@ import {
   getTextPasteHint,
 } from "../../utils/parseQuestionText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
+import { LEVEL_OPTIONS } from "../../utils/levels";
 import {
   buildQuestionDisplayList,
   truncatePassage,
@@ -28,6 +29,7 @@ export default function TeacherQuestionBankTab() {
   const [questions, setQuestions] = useState(() => loadQuestionBank());
   const [questionType, setQuestionType] = useState("subjective");
   const [subject, setSubject] = useState("vocab");
+  const [questionLevel, setQuestionLevel] = useState("");
   const [passage, setPassage] = useState("");
   const [passageId, setPassageId] = useState(null);
   const [prompt, setPrompt] = useState("");
@@ -127,6 +129,11 @@ export default function TeacherQuestionBankTab() {
       return;
     }
 
+    if (!questionLevel) {
+      setFormError("레벨을 선택해 주세요.");
+      return;
+    }
+
     const activePassageId = isReading ? passageId ?? createPassageId() : null;
     if (isReading && !passageId) {
       setPassageId(activePassageId);
@@ -140,6 +147,7 @@ export default function TeacherQuestionBankTab() {
       options: questionType === "objective" ? options : [],
       passage: isReading ? passage : "",
       passageId: activePassageId,
+      level: questionLevel,
     });
     setQuestions(next);
     resetForm();
@@ -274,6 +282,22 @@ export default function TeacherQuestionBankTab() {
                   {SUBJECT_OPTIONS.map((opt) => (
                     <option key={opt.id} value={opt.id}>
                       {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={fieldLabelStyle}>
+                레벨
+                <select
+                  value={questionLevel}
+                  onChange={(e) => setQuestionLevel(e.target.value)}
+                  style={selectStyle}
+                >
+                  <option value="">레벨 선택</option>
+                  {LEVEL_OPTIONS.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
                     </option>
                   ))}
                 </select>
