@@ -3,6 +3,12 @@ import QuestionCard from "./QuestionCard";
 import { shouldShowReadingPassage } from "../utils/examTakeView";
 import { gradeQuestion } from "../utils/grade";
 import { getIncorrectQuestionItems } from "../utils/incorrectAnswerClinic";
+import {
+  incorrectAnswerCloseBtnStyle,
+  incorrectAnswerFooterStyle,
+  incorrectAnswerPrimaryBtnStyle,
+  incorrectAnswerSecondaryBtnStyle,
+} from "./incorrectAnswerModalStyles";
 
 export default function IncorrectAnswerClinicModal({ result, studentName, onClose }) {
   const items = useMemo(() => getIncorrectQuestionItems(result), [result]);
@@ -40,9 +46,11 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
       <div style={overlayStyle} onClick={onClose}>
         <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
           <p style={{ margin: 0, color: "#64748b" }}>오답 문항이 없습니다.</p>
-          <button type="button" onClick={onClose} style={{ ...closeBtnStyle, marginTop: 16 }}>
-            닫기
-          </button>
+          <div style={incorrectAnswerFooterStyle}>
+            <button type="button" onClick={onClose} style={incorrectAnswerCloseBtnStyle}>
+              닫기
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -82,16 +90,16 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
           ))}
         </div>
 
-        <div style={footerActionsStyle}>
-          <button type="button" onClick={onClose} style={closeBtnStyle}>
+        <div style={incorrectAnswerFooterStyle}>
+          <button type="button" onClick={onClose} style={incorrectAnswerCloseBtnStyle}>
             닫기
           </button>
           {!submitted ? (
-            <button type="button" onClick={handleSubmit} style={primaryBtnStyle}>
+            <button type="button" onClick={handleSubmit} style={incorrectAnswerPrimaryBtnStyle}>
               제출
             </button>
           ) : (
-            <button type="button" onClick={handleRetry} style={secondaryBtnStyle}>
+            <button type="button" onClick={handleRetry} style={incorrectAnswerSecondaryBtnStyle}>
               다시 풀기
             </button>
           )}
@@ -130,15 +138,11 @@ const headerRowStyle = {
   marginBottom: 16,
 };
 
-const closeBtnStyle = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px solid #cbd5e1",
-  background: "white",
-  color: "#334155",
-  fontWeight: 700,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
+const questionListStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  marginBottom: 4,
 };
 
 const summaryBannerStyle = {
@@ -150,35 +154,4 @@ const summaryBannerStyle = {
   color: "#1d4ed8",
   fontWeight: 800,
   textAlign: "center",
-};
-
-const questionListStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
-};
-
-const footerActionsStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-start",
-  gap: 10,
-  marginTop: 16,
-};
-
-const primaryBtnStyle = {
-  padding: "12px 20px",
-  borderRadius: 10,
-  border: "none",
-  background: "#2563eb",
-  color: "white",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondaryBtnStyle = {
-  ...primaryBtnStyle,
-  background: "white",
-  color: "#334155",
-  border: "1px solid #cbd5e1",
 };
