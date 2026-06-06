@@ -28,8 +28,15 @@ export function gradeQuestion(question, userAnswer) {
   const answer = normalize(question.answer).toLowerCase();
 
   switch (question.type) {
+    case "objective": {
+      const correctIndex = Number(question.answer) - 1;
+      const correctOption = question.options?.[correctIndex];
+      if (correctOption && user === normalize(correctOption).toLowerCase()) return 1;
+      return user === answer ? 1 : 0;
+    }
     case "mcq":
     case "short":
+    case "subjective":
     case "meaning":
     case "spelling":
     case "fill":
@@ -65,5 +72,12 @@ export function flattenQuestions(baseQuestions) {
 }
 
 export function getAnswerFeedback(question) {
+  if (question.type === "objective") {
+    const correctIndex = Number(question.answer) - 1;
+    const correctOption = question.options?.[correctIndex];
+    return correctOption
+      ? `정답: ${question.answer}번 · ${correctOption}`
+      : `정답: ${question.answer}번`;
+  }
   return `정답: ${question.answer}`;
 }

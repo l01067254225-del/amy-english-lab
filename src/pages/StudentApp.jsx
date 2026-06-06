@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QuestionCard from "../components/QuestionCard";
 import SiteHeader from "../components/SiteHeader";
+import StudentReadingTest from "./student/StudentReadingTest";
 import { getQuestionsByTestId, TESTS } from "../data/questions";
 import {
   fetchAllResults,
@@ -8,6 +9,7 @@ import {
   saveResult,
 } from "../services/resultsApi";
 import { flattenQuestions, gradeQuestion } from "../utils/grade";
+import { getReadingTestSet } from "../utils/readingTestData";
 
 export default function StudentApp({ student, onLogout }) {
   const studentKey = student.id;
@@ -34,18 +36,26 @@ export default function StudentApp({ student, onLogout }) {
     loadMyResults();
   }, [loadMyResults]);
 
+  const readingTestSet = useMemo(() => {
+    if (selectedTestId !== "reading") return null;
+    return getReadingTestSet();
+  }, [selectedTestId]);
+
   const baseQuestions = useMemo(
     () => getQuestionsByTestId(selectedTestId),
     [selectedTestId]
   );
 
-  const flatQuestions = useMemo(
-    () => flattenQuestions(baseQuestions),
-    [baseQuestions]
-  );
+  const flatQuestions = useMemo(() => {
+    if (selectedTestId === "reading" && readingTestSet) {
+      return readingTestSet.questions;
+    }
+    return flattenQuestions(baseQuestions);
+  }, [selectedTestId, readingTestSet, baseQuestions]);
 
   const total = flatQuestions.length;
   const selectedTest = TESTS.find((t) => t.id === selectedTestId);
+  const isReadingMode = selectedTestId === "reading" && readingTestSet;
   const firstReadingId = flatQuestions.find((q) => q.type === "fill")?.readingId;
 
   const setAnswer = (qid, value) => {
@@ -113,7 +123,7 @@ export default function StudentApp({ student, onLogout }) {
     vocab: "뜻 30문항 + 철자 30문항 (총 60문항)",
     writing: "문장 단어 배열 10문항",
     grammar: "객관식 7문항 + 주관식 3문항",
-    reading: "지문 1개 · 단어 보기 빈칸 채우기 10문항",
+    reading: "지문 분할 화면 · 한 문제씩 집중 풀이",
   };
 
   return (
@@ -125,7 +135,7 @@ export default function StudentApp({ student, onLogout }) {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+      <div style={{ maxWidth: isReadingMode ? 1280 : 1000, margin: "0 auto" }}>
         <SiteHeader
           title="AMY ENGLISH LAB"
           subtitle={`${student.name} (${student.id})`}
@@ -327,10 +337,10 @@ export default function StudentApp({ student, onLogout }) {
         {!showScorePanel && (
           <div
             style={{
-              background: "white",
+              background: isReadingMode ? "transparent" : "white",
               borderRadius: 12,
-              padding: 20,
-              boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+              padding: isReadingMode ? 0 : 20,
+              boxShadow: isReadingMode ? "none" : "0 4px 16px rgba(0,0,0,0.06)",
             }}
           >
             <p style={{ margin: "0 0 16px", color: "#64748b" }}>
@@ -338,60 +348,75 @@ export default function StudentApp({ student, onLogout }) {
               문항당 1점 (총 {total}점)
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {flatQuestions.map((q, idx) => (
-                <QuestionCard
-                  key={q.id}
-                  question={q}
-                  index={idx}
-                  userAnswer={answers[q.id] ?? ""}
-                  submitted={submitted}
-                  onAnswer={setAnswer}
-                  showPassage={
-                    q.type === "fill" && q.readingId === firstReadingId && q.num === 1
-                  }
-                  showWordBank={
-                    q.type === "fill" && q.readingId === firstReadingId && q.num === 1
-                  }
-                />
-              ))}
-            </div>
+            {isReadingMode ? (
+              <StudentReadingTest
+                passage={readingTestSet.passage}
+                questions={readingTestSet.questions}
+                answers={answers}
+                submitted={submitted}
+                saving={saving}
+                onAnswer={setAnswer}
+                onSubmit={submit}
+                onReset={reset}
+              />
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {flatQuestions.map((q, idx) => (
+                    <QuestionCard
+                      key={q.id}
+                      question={q}
+                      index={idx}
+                      userAnswer={answers[q.id] ?? ""}
+                      submitted={submitted}
+                      onAnswer={setAnswer}
+                      showPassage={
+                        q.type === "fill" && q.readingId === firstReadingId && q.num === 1
+                      }
+                      showWordBank={
+                        q.type === "fill" && q.readingId === firstReadingId && q.num === 1
+                      }
+                    />
+                  ))}
+                </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              {!submitted ? (
-                <button
-                  type="button"
-                  onClick={submit}
-                  disabled={saving}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: saving ? "#94a3b8" : "#2563eb",
-                    color: "white",
-                    cursor: saving ? "wait" : "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  {saving ? "저장 중..." : "제출"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={reset}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                    background: "white",
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  다시 풀기
-                </button>
-              )}
-            </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  {!submitted ? (
+                    <button
+                      type="button"
+                      onClick={submit}
+                      disabled={saving}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: saving ? "#94a3b8" : "#2563eb",
+                        color: "white",
+                        cursor: saving ? "wait" : "pointer",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {saving ? "저장 중..." : "제출"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={reset}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        cursor: "pointer",
+                        fontWeight: 800,
+                      }}
+                    >
+                      다시 풀기
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
