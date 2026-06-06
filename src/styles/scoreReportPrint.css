@@ -51,4 +51,8 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  .score-report-timeline-table {
+    break-inside: avoid;
+  }
 }

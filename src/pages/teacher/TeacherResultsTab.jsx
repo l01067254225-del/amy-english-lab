@@ -2,6 +2,13 @@ import { useMemo, useState } from "react";
 import IncorrectAnswerNoteModal from "../../components/IncorrectAnswerNoteModal";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
 import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
+import {
+  buildDailySmsText,
+  copyTextToClipboard,
+  getResultDateKey,
+  getStudentResultsOnDate,
+  mergeDailySubjectScores,
+} from "../../utils/scoreAnalytics";
 import { formatDate } from "../../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../../utils/examHelpers";
 import { LEVEL_OPTIONS, formatLevelLabel } from "../../utils/levels";
@@ -74,6 +81,31 @@ export default function TeacherResultsTab({
     ? registryRows.find((row) => row.id === printTarget.id) ?? printTarget
     : null;
 
+  const handleCopyDailySms = async (row) => {
+    const dateKey = getResultDateKey(row.submittedAt);
+    const dayResults = getStudentResultsOnDate(
+      safeResults,
+      row.studentId,
+      row.studentName,
+      dateKey
+    );
+    const subjectScores = mergeDailySubjectScores(dayResults);
+    const message = buildDailySmsText({
+      studentName: row.studentName,
+      level: row.level === "—" ? "" : row.level,
+      dateKey,
+      subjectScores,
+    });
+
+    try {
+      await copyTextToClipboard(message);
+      alert("문자 내용이 복사되었습니다. 붙여넣기(Ctrl+V)하여 전송하세요!");
+    } catch (error) {
+      console.error(error);
+      alert("클립보드 복사에 실패했습니다.");
+    }
+  };
+
   return (
     <>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -92,7 +124,8 @@ export default function TeacherResultsTab({
       <div style={summaryCard}>
         <h2 style={sectionTitle}>전체 성적 목록</h2>
         <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
-          모든 학생의 시험 제출 기록을 조회하고, 성적표를 인쇄할 수 있습니다.
+          당일 결과는 [문자 복사]로 전송하고, [성적표 인쇄]로 최근 1달 누적 통계를 확인할 수
+          있습니다.
         </p>
 
         <div
@@ -151,7 +184,7 @@ export default function TeacherResultsTab({
                   <th style={thTdStyle}>시험 제목</th>
                   <th style={thTdStyle}>과목</th>
                   <th style={thTdStyle}>점수 / 만점</th>
-                  <th style={{ ...thTdStyle, textAlign: "right", minWidth: 200 }}></th>
+                  <th style={{ ...thTdStyle, textAlign: "right", minWidth: 320 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -173,6 +206,13 @@ export default function TeacherResultsTab({
                     </td>
                     <td style={{ ...thTdStyle, textAlign: "right" }}>
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyDailySms(row)}
+                          style={smsRowBtnStyle}
+                        >
+                          문자 복사
+                        </button>
                         <button
                           type="button"
                           onClick={() => setPrintTarget(row)}
@@ -202,6 +242,7 @@ export default function TeacherResultsTab({
       {printRow && (
         <ScoreReportPrintModal
           result={printRow}
+          allResults={safeResults}
           studentLevel={printRow.level === "—" ? "" : printRow.level}
           onClose={() => setPrintTarget(null)}
         />
@@ -231,6 +272,18 @@ const levelBadgeStyle = {
 const scoreHighlightStyle = {
   fontWeight: 800,
   color: "#0f172a",
+};
+
+const smsRowBtnStyle = {
+  padding: "7px 12px",
+  borderRadius: 8,
+  border: "1px solid #bbf7d0",
+  background: "#ecfdf5",
+  color: "#047857",
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const printRowBtnStyle = {
