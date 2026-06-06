@@ -1,23 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import { STUDENTS } from "../data/students";
-import { clearAllResults, fetchAllResults, formatDate } from "../services/resultsApi";
+import { clearAllResults, fetchAllResults } from "../services/resultsApi";
 import {
   clearTeacherSession,
   isTeacherAuthed,
   setTeacherSession,
   verifyAdmin,
 } from "../utils/teacherAuth";
+import TeacherExamBuilderTab from "./teacher/TeacherExamBuilderTab";
+import TeacherQuestionBankTab from "./teacher/TeacherQuestionBankTab";
+import TeacherResultsTab from "./teacher/TeacherResultsTab";
+import { btnSecondary } from "./teacher/teacherStyles";
+
+const TABS = [
+  { id: "results", label: "성적 조회" },
+  { id: "questionBank", label: "문제은행 관리" },
+  { id: "examBuilder", label: "시험 생성" },
+];
 
 export default function TeacherApp({ onBack }) {
   const [authed, setAuthed] = useState(() => isTeacherAuthed());
+  const [activeTab, setActiveTab] = useState("results");
   const [teacherId, setTeacherId] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 선생님이 로그인하면 localStorage에서 저장된 결과를 불러옵니다.
   const loadResults = useCallback(async () => {
     setLoading(true);
     try {
@@ -135,89 +145,43 @@ export default function TeacherApp({ onBack }) {
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <SiteHeader
           title="교사용 관리자 페이지"
-          subtitle="학생 점수를 한눈에 확인하고 제출 내역을 관리합니다"
+          subtitle="성적 조회, 문제은행 관리, 시험 생성을 한곳에서 관리합니다"
           onLogout={logout}
         />
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          {onBack && (
-            <button type="button" onClick={onBack} style={btnSecondary}>
-              돌아가기
+        {onBack && (
+          <button type="button" onClick={onBack} style={{ ...btnSecondary, marginBottom: 16 }}>
+            돌아가기
+          </button>
+        )}
+
+        <div style={tabBarStyle}>
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                ...tabButtonStyle,
+                ...(activeTab === tab.id ? tabButtonActiveStyle : {}),
+              }}
+            >
+              {tab.label}
             </button>
-          )}
-          <button type="button" onClick={loadResults} style={btnSecondary} disabled={loading}>
-            {loading ? "불러오는 중..." : "새로고침"}
-          </button>
-          <button
-            type="button"
-            onClick={handleClearAll}
-            style={{ ...btnSecondary, color: "#b91c1c", borderColor: "#fecaca" }}
-          >
-            전체 성적 삭제
-          </button>
+          ))}
         </div>
 
-        <div style={dashboardGrid}>
-          <div style={summaryCard}>
-            <h2 style={sectionTitle}>학생 제출 현황</h2>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thTdStyle}>학생 이름</th>
-                  <th style={thTdStyle}>ID</th>
-                  <th style={thTdStyle}>제출 여부</th>
-                  <th style={thTdStyle}>최신 점수</th>
-                  <th style={thTdStyle}>시험</th>
-                  <th style={thTdStyle}>제출 시간</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studentSummary.map((row) => (
-                  <tr key={row.id}>
-                    <td style={thTdStyle}>{row.name}</td>
-                    <td style={thTdStyle}>{row.id}</td>
-                    <td style={thTdStyle}>{row.submitted ? "제출" : "미제출"}</td>
-                    <td style={thTdStyle}>{row.latest ? `${row.latest.score}/${row.latest.total}` : "-"}</td>
-                    <td style={thTdStyle}>{row.latest?.testTitle ?? "-"}</td>
-                    <td style={thTdStyle}>{row.latest ? formatDate(row.latest.submittedAt) : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={summaryCard}>
-            <h2 style={sectionTitle}>전체 제출 내역</h2>
-            {results.length === 0 ? (
-              <p style={{ margin: 0, color: "#64748b" }}>
-                아직 제출된 시험이 없습니다.
-              </p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr>
-                      <th style={thTdStyle}>학생</th>
-                      <th style={thTdStyle}>시험</th>
-                      <th style={thTdStyle}>점수</th>
-                      <th style={thTdStyle}>제출 시간</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((item) => (
-                      <tr key={item.id}>
-                        <td style={thTdStyle}>{item.studentName}</td>
-                        <td style={thTdStyle}>{item.testTitle}</td>
-                        <td style={thTdStyle}>{item.score}/{item.total}</td>
-                        <td style={thTdStyle}>{formatDate(item.submittedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        {activeTab === "results" && (
+          <TeacherResultsTab
+            studentSummary={studentSummary}
+            results={results}
+            loading={loading}
+            onRefresh={loadResults}
+            onClearAll={handleClearAll}
+          />
+        )}
+        {activeTab === "questionBank" && <TeacherQuestionBankTab />}
+        {activeTab === "examBuilder" && <TeacherExamBuilderTab />}
       </div>
     </div>
   );
@@ -267,16 +231,6 @@ const btnPrimary = {
   fontSize: 15,
 };
 
-const btnSecondary = {
-  padding: "10px 14px",
-  borderRadius: 10,
-  border: "1px solid #d1d5db",
-  background: "white",
-  color: "#0f172a",
-  cursor: "pointer",
-  fontWeight: 700,
-};
-
 const backButtonStyle = {
   marginTop: 12,
   width: "100%",
@@ -289,33 +243,29 @@ const backButtonStyle = {
   fontWeight: 700,
 };
 
-const dashboardGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
-};
-
-const summaryCard = {
+const tabBarStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  marginBottom: 20,
+  padding: 6,
   background: "white",
-  borderRadius: 16,
-  padding: 20,
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+  borderRadius: 12,
+  border: "1px solid #e2e8f0",
 };
 
-const sectionTitle = {
-  margin: "0 0 16px",
-  fontSize: 18,
-  color: "#0f172a",
+const tabButtonStyle = {
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "none",
+  background: "transparent",
+  color: "#64748b",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 14,
 };
 
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-};
-
-const thTdStyle = {
-  padding: "12px 14px",
-  borderBottom: "1px solid #e2e8f0",
-  color: "#334155",
-  textAlign: "left",
+const tabButtonActiveStyle = {
+  background: "#2563eb",
+  color: "white",
 };
