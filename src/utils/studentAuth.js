@@ -18,6 +18,7 @@ export function setStudentSession(student) {
     JSON.stringify({
       id: student.id,
       name: student.name,
+      level: student.level ?? "",
     })
   );
 }

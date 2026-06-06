@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QuestionCard from "../components/QuestionCard";
 import SiteHeader from "../components/SiteHeader";
+import StudentLevelCompareDashboard from "../components/StudentLevelCompareDashboard";
 import StudentReadingTest from "./student/StudentReadingTest";
 import { getQuestionsByTestId, TESTS } from "../data/questions";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../services/resultsApi";
 import { flattenQuestions, gradeQuestion } from "../utils/grade";
 import { getReadingTestSet } from "../utils/readingTestData";
+import { getStudentLevel } from "../utils/levelStats";
 
 export default function StudentApp({ student, onLogout }) {
   const studentKey = student.id;
@@ -118,6 +120,7 @@ export default function StudentApp({ student, onLogout }) {
 
   const selectedResult =
     savedResults.find((r) => r.id === selectedResultId) ?? savedResults[0] ?? null;
+  const studentLevel = student.level || getStudentLevel(studentKey);
 
   const testDescription = {
     vocab: "뜻 30문항 + 철자 30문항 (총 60문항)",
@@ -219,7 +222,7 @@ export default function StudentApp({ student, onLogout }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(280px, 1fr) minmax(220px, 320px)",
+                  gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",
                   gap: 16,
                   alignItems: "start",
                 }}
@@ -289,22 +292,22 @@ export default function StudentApp({ student, onLogout }) {
                     <p style={{ margin: "0 0 12px", color: "#475569" }}>
                       시험: <strong>{selectedResult.testTitle}</strong>
                     </p>
-                    <div
-                      style={{
-                        fontSize: 28,
-                        fontWeight: 800,
-                        color: "#2563eb",
-                        marginBottom: 8,
-                      }}
-                    >
-                      {selectedResult.score} / {selectedResult.total}
-                    </div>
+
+                    <StudentLevelCompareDashboard
+                      studentId={studentKey}
+                      result={selectedResult}
+                      level={studentLevel}
+                    />
+
+                    <p style={{ margin: "16px 0 8px", color: "#64748b", fontSize: 13, fontWeight: 700 }}>
+                      문항별 결과
+                    </p>
                     <ul
                       style={{
                         listStyle: "none",
                         padding: 0,
                         margin: 0,
-                        maxHeight: 360,
+                        maxHeight: 280,
                         overflow: "auto",
                       }}
                     >
