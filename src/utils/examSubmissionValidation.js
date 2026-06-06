@@ -15,6 +15,15 @@ export function isAnswerProvided(value) {
   return String(value).trim().length > 0;
 }
 
+function pickStoredAnswer(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export function validateExamAnswers(questions, answers) {
   const safeQuestions = ensureArray(questions);
   const missing = safeQuestions.filter(
@@ -45,8 +54,17 @@ export function validateResultSubmission(record) {
   }
 
   const unanswered = details.filter((detail) => {
-    const fromDetail = detail.userAnswer ?? detail.studentAnswer;
-    const fromMap = answers[detail.questionId];
+    const fromDetail = pickStoredAnswer(
+      detail.userAnswer,
+      detail.studentAnswer,
+      detail.userResponse,
+      detail.studentResponse,
+      detail.response
+    );
+    const fromMap = pickStoredAnswer(
+      answers[detail.questionId],
+      answers[String(detail.questionId)]
+    );
     return !isAnswerProvided(fromDetail) && !isAnswerProvided(fromMap);
   });
   if (unanswered.length > 0) {

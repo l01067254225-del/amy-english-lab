@@ -107,6 +107,8 @@ export function buildClinicRetestAttemptPayload(items, answers) {
       num: item.num,
       questionId: item.question.id,
       userAnswer,
+      studentAnswer: userAnswer,
+      userResponse: userAnswer,
       correct,
     };
   });
@@ -137,6 +139,8 @@ export function applyClinicRetestToResult(result, clinicRetest, latestAttempt) {
       clinicRetest: {
         correct: retestItem.correct,
         userAnswer: retestItem.userAnswer,
+        studentAnswer: retestItem.studentAnswer ?? retestItem.userAnswer,
+        userResponse: retestItem.userResponse ?? retestItem.userAnswer,
         submittedAt: attempt.submittedAt,
         attemptNumber: clinicRetest.attemptCount,
       },

@@ -1,7 +1,7 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { formatStoredUserAnswer } from "./examRetestStorage";
-import { resolveDetailStudentAnswer } from "./resultAnswerStorage";
+import { resolveDetailStudentAnswer, coalesceStudentAnswer } from "./resultAnswerStorage";
 import { ensureArray } from "./safeData";
 
 function getExamByTestId(testId) {
@@ -31,14 +31,17 @@ export function buildResultDetailRows(result) {
     const attempts = [];
 
     if (detail.examRetest) {
-      const firstRaw =
-        detail.examRetest.previousUserAnswer ??
-        resolveDetailStudentAnswer(
-          { ...detail, userAnswer: detail.examRetest.previousUserAnswer },
-          result
-        );
-      const retestRaw =
-        detail.examRetest.userAnswer ?? resolvedAnswer;
+      const firstRaw = coalesceStudentAnswer(
+        detail.examRetest.previousUserAnswer,
+        detail.examRetest.previousStudentAnswer,
+        detail.examRetest.previousUserResponse
+      );
+      const retestRaw = coalesceStudentAnswer(
+        detail.examRetest.userAnswer,
+        detail.examRetest.studentAnswer,
+        detail.examRetest.userResponse,
+        resolvedAnswer
+      );
 
       attempts.push(
         buildAttemptEntry("1차 시험", firstRaw, question, false),
@@ -58,7 +61,11 @@ export function buildResultDetailRows(result) {
       attempts.push(
         buildAttemptEntry(
           "오답 노트",
-          detail.clinicRetest.userAnswer ?? "",
+          coalesceStudentAnswer(
+            detail.clinicRetest.userAnswer,
+            detail.clinicRetest.studentAnswer,
+            detail.clinicRetest.userResponse
+          ),
           question,
           detail.clinicRetest.correct
         )

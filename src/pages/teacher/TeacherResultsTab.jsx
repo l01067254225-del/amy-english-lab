@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import IncorrectAnswerNoteModal from "../../components/IncorrectAnswerNoteModal";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
 import TeacherResultDetailModal from "../../components/TeacherResultDetailModal";
+import { fetchResultById } from "../../services/resultsApi";
 import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
 import {
   buildDailySmsText,
@@ -86,6 +87,22 @@ export default function TeacherResultsTab({
   const detailRow = detailTarget
     ? registryRows.find((row) => row.id === detailTarget.id) ?? detailTarget
     : null;
+
+  useEffect(() => {
+    if (!detailTarget?.id) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const fresh = await fetchResultById(detailTarget.id, { cache: "no-store" });
+      if (cancelled || !fresh) return;
+      setDetailTarget(fresh);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailTarget?.id]);
 
   const handleCopyDailySms = async (row) => {
     const dateKey = getResultDateKey(row.submittedAt);

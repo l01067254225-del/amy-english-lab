@@ -1,8 +1,5 @@
 import * as localStorageApi from "../utils/resultsStorage";
-import {
-  enrichResultRecordForSave,
-  normalizeStoredResults,
-} from "../utils/resultAnswerStorage";
+import { enrichResultRecordForSave } from "../utils/resultAnswerStorage";
 import {
   ExamSubmissionValidationError,
   validateResultSubmission,
@@ -20,8 +17,10 @@ export function getSyncMode() {
   return "local";
 }
 
-export async function fetchAllResults() {
-  return normalizeStoredResults(localStorageApi.loadResults());
+export async function fetchAllResults({ cache = "no-store" } = {}) {
+  void cache;
+  localStorage.setItem(localStorageApi.RESULTS_CACHE_BUSTER_KEY, String(Date.now()));
+  return localStorageApi.loadResults({ writeBack: true });
 }
 
 export async function replaceResult(resultId, record) {
@@ -29,7 +28,7 @@ export async function replaceResult(resultId, record) {
   validateResultSubmission(prepared);
 
   localStorageApi.replaceResult(resultId, prepared);
-  return normalizeStoredResults(localStorageApi.loadResults());
+  return localStorageApi.loadResults({ writeBack: false });
 }
 
 export async function saveResult(record) {
@@ -40,7 +39,7 @@ export async function saveResult(record) {
   validateResultSubmission(prepared);
 
   localStorageApi.saveResult(prepared);
-  return normalizeStoredResults(localStorageApi.loadResults());
+  return localStorageApi.loadResults({ writeBack: false });
 }
 
 export async function deleteResult(resultId) {
@@ -50,4 +49,10 @@ export async function deleteResult(resultId) {
 export async function clearAllResults() {
   localStorageApi.clearResults();
   return [];
+}
+
+export async function fetchResultById(resultId, { cache = "no-store" } = {}) {
+  void cache;
+  const all = await fetchAllResults({ cache: "no-store" });
+  return all.find((item) => item.id === resultId) ?? null;
 }

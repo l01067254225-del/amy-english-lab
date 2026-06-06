@@ -1,6 +1,10 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
-import { isAnswerEmpty, resolveDetailStudentAnswer } from "./resultAnswerStorage";
+import {
+  attachStudentAnswerFields,
+  isAnswerMissingForDisplay,
+  resolveDetailStudentAnswer,
+} from "./resultAnswerStorage";
 import { ensureArray } from "./safeData";
 
 function getExamByTestId(testId) {
@@ -9,19 +13,22 @@ function getExamByTestId(testId) {
 }
 
 export function formatStoredUserAnswer(question, userAnswer) {
-  if (isAnswerEmpty(userAnswer)) return "(미입력)";
+  if (isAnswerMissingForDisplay(userAnswer)) {
+    return "(미입력)";
+  }
 
-  const raw = String(userAnswer).trim();
+  const raw = typeof userAnswer === "string" ? userAnswer : String(userAnswer);
 
   if (question?.type === "objective") {
-    const numericIndex = Number(raw) - 1;
+    const trimmed = raw.trim();
+    const numericIndex = Number(trimmed) - 1;
     if (Number.isFinite(numericIndex) && numericIndex >= 0) {
       const optionText = ensureArray(question.options)[numericIndex];
-      if (optionText) return `${raw}번 · ${optionText}`;
+      if (optionText) return `${trimmed}번 · ${optionText}`;
     }
 
     const matchedIndex = ensureArray(question.options).findIndex(
-      (option) => String(option).trim() === raw
+      (option) => String(option).trim() === trimmed
     );
     if (matchedIndex >= 0) {
       return `${matchedIndex + 1}번 · ${question.options[matchedIndex]}`;
@@ -70,28 +77,31 @@ export function mergeExamRetestResult(previousResult, newRecord) {
     const wasWrong = previousDetail && previousDetail.correct === false;
     const nowCorrect = newDetail.correct === true;
     const userAnswer = resolveDetailStudentAnswer(newDetail, newRecord);
+    const previousUserAnswer = previousDetail
+      ? resolveDetailStudentAnswer(previousDetail, previousResult)
+      : null;
 
-    const baseDetail = {
-      ...newDetail,
-      userAnswer,
-      studentAnswer: userAnswer,
-    };
+    let baseDetail = attachStudentAnswerFields(newDetail, userAnswer ?? "");
 
     if (!wasWrong) {
       return baseDetail;
     }
 
+    const examRetestPayload = {
+      passed: nowCorrect,
+      correct: nowCorrect,
+      userAnswer: userAnswer ?? "",
+      studentAnswer: userAnswer ?? "",
+      userResponse: userAnswer ?? "",
+      previousUserAnswer: previousUserAnswer ?? "",
+      submittedAt: newRecord.submittedAt,
+      attemptNumber: Number(newRecord.attemptCount ?? 1),
+    };
+
     return {
       ...baseDetail,
       retested: true,
-      examRetest: {
-        passed: nowCorrect,
-        correct: nowCorrect,
-        userAnswer,
-        previousUserAnswer: resolveDetailStudentAnswer(previousDetail, previousResult),
-        submittedAt: newRecord.submittedAt,
-        attemptNumber: Number(newRecord.attemptCount ?? 1),
-      },
+      examRetest: examRetestPayload,
     };
   });
 

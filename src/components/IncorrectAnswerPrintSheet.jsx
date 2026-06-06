@@ -4,8 +4,10 @@ import { ensureArray } from "../utils/safeData";
 import "../styles/incorrectAnswerPrint.css";
 
 function formatClinicUserAnswer(question, userAnswer) {
-  const raw = String(userAnswer ?? "").trim();
-  if (!raw) return "(미입력)";
+  if (userAnswer === null || userAnswer === undefined) return "(미입력)";
+
+  const raw = typeof userAnswer === "string" ? userAnswer : String(userAnswer);
+  if (!raw.trim()) return raw;
 
   if (question.type === "objective") {
     const optionIndex = Number(raw) - 1;

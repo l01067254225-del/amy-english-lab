@@ -5,6 +5,7 @@ import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
 import { fetchAllResults, replaceResult, saveResult } from "../../services/resultsApi";
 import { mergeExamRetestResult } from "../../utils/examRetestStorage";
+import { attachStudentAnswerFields } from "../../utils/resultAnswerStorage";
 import { isExamStartBlocked } from "../../utils/studentExamStatus";
 import {
   buildExamTakeView,
@@ -164,12 +165,14 @@ export default function StudentExamTake({
     const details = flatQuestions.map((q, idx) => {
       const earned = gradeQuestion(q, answers[q.id]);
       score += earned;
-      return {
-        num: idx + 1,
-        questionId: q.id,
-        correct: earned === 1,
-        userAnswer: String(answers[q.id] ?? "").trim(),
-      };
+      return attachStudentAnswerFields(
+        {
+          num: idx + 1,
+          questionId: q.id,
+          correct: earned === 1,
+        },
+        answers[q.id]
+      );
     });
 
     const baseRecord = {
