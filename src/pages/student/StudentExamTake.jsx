@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import QuestionCard from "../../components/QuestionCard";
+import RetestWrongAnswerReview from "../../components/RetestWrongAnswerReview";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
 import { fetchAllResults, replaceResult, saveResult } from "../../services/resultsApi";
+import { mergeExamRetestResult } from "../../utils/examRetestStorage";
 import { isExamStartBlocked } from "../../utils/studentExamStatus";
 import {
   buildExamTakeView,
@@ -73,6 +75,31 @@ export default function StudentExamTake({
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [startBlocked, setStartBlocked] = useState(false);
+  const [retestPhase, setRetestPhase] = useState(() => (isRetest ? "review" : "exam"));
+  const [previousResult, setPreviousResult] = useState(null);
+
+  useEffect(() => {
+    if (!isRetest || !retestResultId) {
+      setPreviousResult(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const all = await fetchAllResults();
+        if (cancelled) return;
+        setPreviousResult(all.find((item) => item.id === retestResultId) ?? null);
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isRetest, retestResultId]);
 
   useEffect(() => {
     if (isRetest) return;
@@ -141,6 +168,7 @@ export default function StudentExamTake({
         num: idx + 1,
         questionId: q.id,
         correct: earned === 1,
+        userAnswer: String(answers[q.id] ?? "").trim(),
       };
     });
 
@@ -165,9 +193,15 @@ export default function StudentExamTake({
       }
 
       const record = { ...baseRecord, attemptCount, answers };
+      let payload = record;
+
+      if (isRetest && retestResultId && previousResult) {
+        payload = mergeExamRetestResult(previousResult, record);
+      }
+
       const next =
         isRetest && retestResultId
-          ? await replaceResult(retestResultId, record)
+          ? await replaceResult(retestResultId, { ...payload, answers })
           : await saveResult(record);
 
       const mine = next.filter(
@@ -209,6 +243,42 @@ export default function StudentExamTake({
     );
   }
 
+  if (isRetest && retestPhase === "review") {
+    return (
+      <div style={pageStyle}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <SiteHeader
+            title="AMY ENGLISH LAB"
+            subtitle={`${exam.title} · 재시험 · 오답 확인`}
+            onLogout={onLogout}
+          />
+
+          <button type="button" onClick={onBack} style={backBtnStyle}>
+            ← 결과 화면으로
+          </button>
+
+          {previousResult ? (
+            <RetestWrongAnswerReview
+              result={previousResult}
+              studentName={student.name || studentKey}
+              mode="inline"
+              showStartButton
+              onStartExam={() => {
+                clearExamDraft(studentKey, examId);
+                setAnswers({});
+                setRetestPhase("exam");
+              }}
+            />
+          ) : (
+            <div style={loadingCardStyle}>
+              <p style={{ margin: 0, color: "#64748b" }}>이전 시험 결과를 불러오는 중...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={pageStyle}>
       <div style={{ maxWidth: isReadingMode ? 1280 : 960, margin: "0 auto" }}>
@@ -224,8 +294,8 @@ export default function StudentExamTake({
 
         {isRetest && (
           <p style={retestBannerStyle}>
-            재시험 모드 · 문항 순서가 무작위로 섞였습니다. 커트라인 통과 후 오답 노트를
-            이용할 수 있습니다.
+            재시험 응시 중 · 오답 확인을 마친 뒤 다시 풀고 있습니다. 커트라인 통과 후 오답
+            노트를 이용할 수 있습니다.
           </p>
         )}
 
@@ -322,6 +392,15 @@ const retestBannerStyle = {
   fontSize: 14,
   fontWeight: 600,
   lineHeight: 1.6,
+};
+
+const loadingCardStyle = {
+  marginTop: 16,
+  padding: 24,
+  borderRadius: 12,
+  background: "white",
+  border: "1px solid #e2e8f0",
+  textAlign: "center",
 };
 
 const submitBtnStyle = {

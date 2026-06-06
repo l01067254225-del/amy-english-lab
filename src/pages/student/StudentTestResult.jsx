@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../../components/SiteHeader";
 import IncorrectAnswerTools from "../../components/IncorrectAnswerTools";
+import RetestWrongAnswerReview from "../../components/RetestWrongAnswerReview";
 import StudentLevelCompareDashboard from "../../components/StudentLevelCompareDashboard";
 import { fetchAllResults, formatDate } from "../../services/resultsApi";
 import {
@@ -11,6 +12,7 @@ import {
 import { getStudentLevel } from "../../utils/levelStats";
 import { SUBJECT_SMS_LABELS } from "../../utils/scoreAnalytics";
 import { ensureArray } from "../../utils/safeData";
+import { countRetestReviewItems } from "../../utils/examRetestStorage";
 
 export default function StudentTestResult({
   student,
@@ -23,6 +25,7 @@ export default function StudentTestResult({
   const studentName = student?.name ?? "학생";
   const studentLevel = student.level || getStudentLevel(studentKey);
   const [savedResults, setSavedResults] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const loadMyResults = useCallback(async () => {
     try {
@@ -55,6 +58,11 @@ export default function StudentTestResult({
     if (!result || !result.total) return 0;
     return Math.round((Number(result.score) / Number(result.total)) * 100);
   }, [result]);
+
+  const retestReviewCount = useMemo(
+    () => (result ? countRetestReviewItems(result) : 0),
+    [result]
+  );
 
   const handleRetest = () => {
     if (!result?.testId) return;
@@ -148,9 +156,20 @@ export default function StudentTestResult({
                 <p style={{ margin: "0 0 14px", lineHeight: 1.7, fontWeight: 600 }}>
                   {getCutoffWarningMessage(cutoff.failedSubjects)}
                 </p>
-                <button type="button" onClick={handleRetest} style={retestBtnStyle}>
-                  재시험 응시하기
-                </button>
+                <div style={retestActionRowStyle}>
+                  {retestReviewCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setReviewOpen(true)}
+                      style={reviewBtnStyle}
+                    >
+                      오답 확인하기 ({retestReviewCount}문항)
+                    </button>
+                  )}
+                  <button type="button" onClick={handleRetest} style={retestBtnStyle}>
+                    재시험 응시하기
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -172,6 +191,9 @@ export default function StudentTestResult({
                     >
                       <span>
                         Q{d.num}
+                        {d.examRetest?.passed && (
+                          <span style={examRetestTagStyle}>재시험 통과</span>
+                        )}
                         {d.clinicRetest && (
                           <span style={clinicRetestTagStyle}>
                             재응시 {d.clinicRetest.correct ? "O" : "X"}
@@ -196,6 +218,15 @@ export default function StudentTestResult({
           </div>
         )}
       </div>
+
+      {reviewOpen && result && (
+        <RetestWrongAnswerReview
+          result={result}
+          studentName={studentName}
+          mode="modal"
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -305,6 +336,19 @@ const retestBtnStyle = {
   cursor: "pointer",
 };
 
+const reviewBtnStyle = {
+  ...retestBtnStyle,
+  background: "white",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+};
+
+const retestActionRowStyle = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
 const detailTitleStyle = {
   margin: "20px 0 10px",
   fontSize: 15,
@@ -337,4 +381,12 @@ const clinicRetestTagStyle = {
   fontSize: 11,
   fontWeight: 700,
   color: "#64748b",
+};
+
+const examRetestTagStyle = {
+  display: "block",
+  marginTop: 2,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#047857",
 };
