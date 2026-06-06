@@ -12,6 +12,11 @@ import {
   loadExamDraft,
   saveExamDraft,
 } from "../../utils/examDraftStorage";
+import {
+  EXAM_SUBMISSION_INCOMPLETE_MESSAGE,
+  ExamSubmissionValidationError,
+  validateExamAnswers,
+} from "../../utils/examSubmissionValidation";
 import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { loadExamSets } from "../../utils/questionBankStorage";
@@ -87,7 +92,13 @@ export default function StudentExamTake({
   };
 
   const submit = async () => {
-    if (!exam) return;
+    if (!exam || saving) return;
+
+    const answerCheck = validateExamAnswers(flatQuestions, answers);
+    if (!answerCheck.valid) {
+      alert(EXAM_SUBMISSION_INCOMPLETE_MESSAGE);
+      return;
+    }
 
     let score = 0;
     const details = flatQuestions.map((q, idx) => {
@@ -120,7 +131,7 @@ export default function StudentExamTake({
         attemptCount = Number(existing?.attemptCount ?? 1) + 1;
       }
 
-      const record = { ...baseRecord, attemptCount };
+      const record = { ...baseRecord, attemptCount, answers };
       const next =
         isRetest && retestResultId
           ? await replaceResult(retestResultId, record)
@@ -137,7 +148,11 @@ export default function StudentExamTake({
       }
     } catch (error) {
       console.error(error);
-      alert("제출 저장에 실패했습니다.");
+      if (error instanceof ExamSubmissionValidationError) {
+        alert(error.message);
+      } else {
+        alert("제출 저장에 실패했습니다.");
+      }
     } finally {
       setSaving(false);
     }

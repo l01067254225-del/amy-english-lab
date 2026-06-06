@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../../components/SiteHeader";
-import { fetchAllResults, formatDate } from "../../services/resultsApi";
+import { deleteResult, fetchAllResults, formatDate } from "../../services/resultsApi";
 import { getExamQuestionCount, getExamSubjectSummary } from "../../utils/examHelpers";
 import { getStudentLevel } from "../../utils/levelStats";
 import { formatTestDate, formatLevelLabel, getTodayDateString } from "../../utils/levels";
@@ -48,6 +48,22 @@ export default function StudentDashboard({
   useEffect(() => {
     loadMyResults();
   }, [loadMyResults]);
+
+  const handleDeleteZeroScore = async (result) => {
+    if (Number(result?.score) !== 0) return;
+    const confirmed = window.confirm(
+      `"${result.testTitle}" 0점 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteResult(result.id);
+      setSavedResults((prev) => prev.filter((entry) => entry.id !== result.id));
+    } catch (error) {
+      console.error(error);
+      alert("시험 기록 삭제에 실패했습니다.");
+    }
+  };
 
   const greeting = studentLevel
     ? `안녕하세요, ${studentName} 학생 (레벨: ${formatLevelLabel(studentLevel)})`
@@ -118,7 +134,7 @@ export default function StudentDashboard({
                     <th style={thStyle}>시험 날짜</th>
                     <th style={thStyle}>시험 제목</th>
                     <th style={thStyle}>점수</th>
-                    <th style={{ ...thStyle, width: 120, textAlign: "right" }}></th>
+                    <th style={{ ...thStyle, width: 180, textAlign: "right" }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -134,13 +150,24 @@ export default function StudentDashboard({
                         </span>
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <button
-                          type="button"
-                          onClick={() => onViewResult(result.id)}
-                          style={resultBtnStyle}
-                        >
-                          결과 보기
-                        </button>
+                        <div style={historyActionRowStyle}>
+                          {Number(result.score) === 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteZeroScore(result)}
+                              style={deleteBtnStyle}
+                            >
+                              삭제
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onViewResult(result.id)}
+                            style={resultBtnStyle}
+                          >
+                            결과 보기
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -317,6 +344,14 @@ const scoreStyle = {
   color: "#2563eb",
 };
 
+const historyActionRowStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
 const resultBtnStyle = {
   padding: "8px 14px",
   borderRadius: 8,
@@ -326,4 +361,11 @@ const resultBtnStyle = {
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const deleteBtnStyle = {
+  ...resultBtnStyle,
+  borderColor: "#fecaca",
+  background: "#fef2f2",
+  color: "#b91c1c",
 };

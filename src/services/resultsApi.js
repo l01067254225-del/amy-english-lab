@@ -1,7 +1,13 @@
 import * as localStorageApi from "../utils/resultsStorage";
+import {
+  ExamSubmissionValidationError,
+  stripAnswersFromResultRecord,
+  validateResultSubmission,
+} from "../utils/examSubmissionValidation";
 import { ensureArray } from "../utils/safeData";
 
 export { formatDate } from "../utils/resultsStorage";
+export { ExamSubmissionValidationError } from "../utils/examSubmissionValidation";
 
 export function isFirebaseReady() {
   return false;
@@ -16,6 +22,8 @@ export async function fetchAllResults() {
 }
 
 export async function replaceResult(resultId, record) {
+  validateResultSubmission(record);
+
   const payload = {
     studentId: record.studentId,
     studentName: record.studentName,
@@ -27,12 +35,16 @@ export async function replaceResult(resultId, record) {
     details: ensureArray(record.details),
     attemptCount: Number(record.attemptCount ?? 1),
     id: resultId,
+    ...(record.clinicRetest ? { clinicRetest: record.clinicRetest } : {}),
   };
-  localStorageApi.replaceResult(resultId, payload);
+
+  localStorageApi.replaceResult(resultId, stripAnswersFromResultRecord(payload));
   return ensureArray(localStorageApi.loadResults());
 }
 
 export async function saveResult(record) {
+  validateResultSubmission(record);
+
   const payload = {
     studentId: record.studentId,
     studentName: record.studentName,
@@ -45,14 +57,13 @@ export async function saveResult(record) {
     attemptCount: Number(record.attemptCount ?? 1),
     id: record.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   };
-  localStorageApi.saveResult(payload);
+
+  localStorageApi.saveResult(stripAnswersFromResultRecord(payload));
   return ensureArray(localStorageApi.loadResults());
 }
 
 export async function deleteResult(resultId) {
-  const remaining = localStorageApi.loadResults().filter((item) => item.id !== resultId);
-  localStorage.setItem(localStorageApi.STORAGE_KEY, JSON.stringify(remaining));
-  return remaining;
+  return ensureArray(localStorageApi.deleteResult(resultId));
 }
 
 export async function clearAllResults() {

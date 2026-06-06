@@ -39,6 +39,13 @@ export function replaceResult(resultId, record) {
   return next;
 }
 
+export function deleteResult(resultId) {
+  const results = loadResults();
+  const next = results.filter((item) => item.id !== resultId);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
 export function formatDate(isoString) {
   if (!isoString) return "—";
   const date = new Date(isoString);
