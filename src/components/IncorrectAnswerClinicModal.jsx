@@ -161,7 +161,7 @@ const questionListStyle = {
 const footerActionsStyle = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
+  justifyContent: "flex-start",
   gap: 10,
   marginTop: 16,
 };
@@ -174,7 +174,6 @@ const primaryBtnStyle = {
   color: "white",
   fontWeight: 800,
   cursor: "pointer",
-  marginLeft: "auto",
 };
 
 const secondaryBtnStyle = {
@@ -182,5 +181,4 @@ const secondaryBtnStyle = {
   background: "white",
   color: "#334155",
   border: "1px solid #cbd5e1",
-  marginLeft: "auto",
 };
