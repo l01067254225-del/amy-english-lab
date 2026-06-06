@@ -45,10 +45,14 @@ export default function RetestWrongAnswerReview({
                 showPassage={shouldShowReadingPassage(item.question, questions, index)}
               />
               <div style={answerCompareStyle}>
-                <p style={wrongAnswerStyle}>
-                  틀렸던 답안:{" "}
-                  {formatStoredUserAnswer(item.question, item.wrongAnswer ?? item.userAnswer)}
-                </p>
+                {(item.wrongAttempts?.length > 0 ? item.wrongAttempts : [{ label: "1차 시험", userAnswer: item.wrongAnswer }]).map(
+                  (attempt) => (
+                    <p key={attempt.attemptId ?? attempt.label} style={wrongAnswerStyle}>
+                      {attempt.label ?? "1차 시험"} 틀렸던 답안:{" "}
+                      {formatStoredUserAnswer(item.question, attempt.userAnswer)}
+                    </p>
+                  )
+                )}
                 <p style={correctAnswerStyle}>정답: {item.correctAnswer}</p>
               </div>
             </div>

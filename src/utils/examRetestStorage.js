@@ -8,7 +8,8 @@ import {
 import {
   appendTestAttemptToResult,
   ATTEMPT_TYPES,
-  getLatestWrongAnswerRaw,
+  getFirstAttemptWrongAnswer,
+  getRetestReviewQuestionIds,
   getTestAttempts,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
@@ -50,20 +51,22 @@ export function getRetestReviewItems(result) {
 
   const questions = ensureArray(getExamByTestId(result.testId)?.questions);
   const synced = syncWrongAnswerHistoryOnResult(result);
+  const reviewQuestionIds = getRetestReviewQuestionIds(synced);
 
   return ensureArray(synced.details)
-    .filter((detail) => detail && detail.correct === false)
+    .filter((detail) => detail && reviewQuestionIds.has(detail.questionId))
     .map((detail) => {
       const question = resolveQuestionForDetail(questions, detail);
       if (!question) return null;
 
-      const wrongAnswer = getLatestWrongAnswerRaw(synced, detail.questionId, detail);
+      const wrongAnswer = getFirstAttemptWrongAnswer(synced, detail.questionId);
 
       return {
         num: detail.num,
         questionId: detail.questionId,
         question,
         wrongAnswer,
+        wrongAttempts: detail.wrongAnswerHistory ?? [],
         userAnswer: wrongAnswer,
         correctAnswer: formatQuestionAnswer(question),
       };
@@ -152,6 +155,7 @@ export function mergeExamRetestResult(previousResult, newRecord) {
   return syncWrongAnswerHistoryOnResult({
     ...mergedBase,
     test_attempts: combined.test_attempts,
+    attempt_logs: combined.attempt_logs,
     answer_logs: combined.answer_logs,
   });
 }

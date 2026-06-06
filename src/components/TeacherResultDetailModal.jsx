@@ -65,8 +65,8 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
 
         {showAttemptHistory && (
           <p style={historyHintStyle}>
-            「틀렸던 답안」은 answer_logs에서 isCorrect=false인 가장 최근 오답입니다. 「최종
-            답안」은 현재 제출 상태입니다.
+            「틀렸던 답안」은 attempt_logs에서 is_correct=false인 기록만 attempt_id(응시
+            회차) 순으로 표시합니다. 「최종 답안」은 마지막 제출본입니다.
           </p>
         )}
 
@@ -98,51 +98,29 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
                   </td>
                   <td style={tdStyle}>{row.prompt}</td>
                   <td style={tdStyle}>
-                    {row.hasWrongHistory ? (
-                      <AnswerCell text={row.wrongAnswerDisplay} variant="wrong" />
+                    {row.wrongAttemptDisplays?.length > 0 ? (
+                      <div style={attemptStackStyle}>
+                        {row.wrongAttemptDisplays.map((attempt) => (
+                          <div key={attempt.attemptId} style={attemptLineStyle}>
+                            <span style={attemptLabelStyle}>{attempt.label}</span>
+                            <AnswerCell text={attempt.userAnswer} variant="wrong" />
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <span style={{ color: "#94a3b8" }}>—</span>
                     )}
                   </td>
                   <td style={tdStyle}>
-                    {row.attempts.length > 1 ? (
-                      <div style={attemptStackStyle}>
-                        {row.attempts.map((attempt) => (
-                          <div key={attempt.label} style={attemptLineStyle}>
-                            <span style={attemptLabelStyle}>{attempt.label}</span>
-                            <AnswerCell
-                              text={attempt.userAnswer}
-                              variant={
-                                attempt.correct === false
-                                  ? "wrong"
-                                  : attempt.correct === true
-                                    ? "correct"
-                                    : "neutral"
-                              }
-                            />
-                            {attempt.correct != null && (
-                              <ResultMark correct={attempt.correct} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={compareRowStyle}>
-                        <AnswerCell
-                          text={row.latestStudentAnswer}
-                          variant={row.correct ? "correct" : "wrong"}
-                        />
-                        {!row.correct && (
-                          <span style={compareArrowStyle}>↔</span>
-                        )}
-                      </div>
-                    )}
+                    <div style={compareRowStyle}>
+                      <AnswerCell
+                        text={row.latestStudentAnswer}
+                        variant={row.correct ? "correct" : "wrong"}
+                      />
+                    </div>
                   </td>
                   <td style={tdStyle}>
                     <div style={compareRowStyle}>
-                      {!row.correct && row.attempts.length <= 1 && (
-                        <span style={compareArrowStyle}>↔</span>
-                      )}
                       <AnswerCell text={row.correctAnswer} variant="correct" />
                     </div>
                   </td>

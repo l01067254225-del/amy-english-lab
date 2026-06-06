@@ -1,4 +1,3 @@
-import { coalesceStudentAnswer, resolveDetailStudentAnswer } from "./resultAnswerStorage";
 import { ensureArray } from "./safeData";
 
 export const ATTEMPT_TYPES = {
@@ -11,7 +10,28 @@ function logTimestamp(log) {
   return new Date(log?.submittedAt || 0).getTime();
 }
 
-export function createAnswerLogEntry({
+/** 제출값 그대로 보존 — trim/가공 없음 */
+export function preserveRawSubmittedAnswer(value) {
+  if (value === null || value === undefined) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
+function normalizeIsCorrect(log) {
+  if (log?.is_correct != null) return Boolean(log.is_correct);
+  if (log?.isCorrect != null) return Boolean(log.isCorrect);
+  return Boolean(log?.correct);
+}
+
+function normalizeAttemptId(log) {
+  if (log?.attempt_id != null && String(log.attempt_id).length > 0) {
+    return String(log.attempt_id);
+  }
+  const attemptNumber = Number(log?.attemptNumber ?? 1);
+  const attemptType = String(log?.attemptType ?? ATTEMPT_TYPES.EXAM);
+  return `${attemptNumber}-${attemptType}`;
+}
+
+export function createAttemptLogEntry({
   questionId,
   num,
   userAnswer,
@@ -19,31 +39,59 @@ export function createAnswerLogEntry({
   submittedAt,
   attemptNumber,
   attemptType = ATTEMPT_TYPES.EXAM,
+  attemptId = null,
+  resultId = null,
 }) {
-  const serialized = coalesceStudentAnswer(userAnswer) ?? "";
+  const serialized = preserveRawSubmittedAnswer(userAnswer);
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  const resolvedAttemptId =
+    attemptId ??
+    (resultId
+      ? `${resultId}-attempt-${normalizedAttemptNumber}-${attemptType}`
+      : `attempt-${normalizedAttemptNumber}-${attemptType}`);
+
   return {
+    attempt_id: resolvedAttemptId,
     questionId,
     num: num ?? null,
     userAnswer: serialized,
     studentAnswer: serialized,
+    userResponse: serialized,
+    is_correct: Boolean(isCorrect),
     isCorrect: Boolean(isCorrect),
     correct: Boolean(isCorrect),
     submittedAt: submittedAt ?? new Date().toISOString(),
-    attemptNumber: Number(attemptNumber) || 1,
+    attemptNumber: normalizedAttemptNumber,
     attemptType,
   };
 }
 
-export function buildAnswerLogsFromDetails(details, meta) {
+function readRawSubmittedAnswer(detail, meta) {
+  const answersMap = meta?.answers ?? meta?.responses ?? {};
+  const fromMap =
+    detail?.questionId != null
+      ? answersMap[detail.questionId] ?? answersMap[String(detail.questionId)]
+      : undefined;
+
+  return preserveRawSubmittedAnswer(
+    detail?.userAnswer ??
+      detail?.studentAnswer ??
+      detail?.userResponse ??
+      fromMap
+  );
+}
+
+export function buildAttemptLogsFromDetails(details, meta) {
   return ensureArray(details).map((detail) =>
-    createAnswerLogEntry({
+    createAttemptLogEntry({
       questionId: detail.questionId,
       num: detail.num,
-      userAnswer: resolveDetailStudentAnswer(detail, meta),
+      userAnswer: readRawSubmittedAnswer(detail, meta),
       isCorrect: detail.correct === true,
       submittedAt: meta.submittedAt,
       attemptNumber: meta.attemptNumber,
       attemptType: meta.attemptType,
+      resultId: meta.id ?? meta.resultId ?? null,
     })
   );
 }
@@ -51,162 +99,173 @@ export function buildAnswerLogsFromDetails(details, meta) {
 export function buildTestAttemptRecord(result, attemptType) {
   const attemptNumber = Number(result?.attemptCount ?? 1);
   const submittedAt = result?.submittedAt ?? new Date().toISOString();
-  const answer_logs = buildAnswerLogsFromDetails(result?.details, {
+  const attempt_logs = buildAttemptLogsFromDetails(result?.details, {
     ...result,
     attemptNumber,
     attemptType,
     submittedAt,
   });
 
+  const attempt_id = result?.id
+    ? `${result.id}-attempt-${attemptNumber}-${attemptType}`
+    : `attempt-${attemptNumber}-${attemptType}`;
+
   return {
+    attempt_id,
     attemptNumber,
     submittedAt,
     attemptType,
     score: Number(result?.score ?? 0),
     total: Number(result?.total ?? 0),
-    answer_logs,
+    attempt_logs,
+    answer_logs: attempt_logs,
   };
 }
 
-function sortLogsChronologically(logs) {
+export function sortAttemptLogs(logs) {
   return [...ensureArray(logs)].sort((a, b) => {
-    const attemptDiff = Number(a.attemptNumber) - Number(b.attemptNumber);
+    const attemptDiff = Number(a.attemptNumber ?? 0) - Number(b.attemptNumber ?? 0);
     if (attemptDiff !== 0) return attemptDiff;
+
+    const idDiff = normalizeAttemptId(a).localeCompare(normalizeAttemptId(b), undefined, {
+      numeric: true,
+    });
+    if (idDiff !== 0) return idDiff;
+
     return logTimestamp(a) - logTimestamp(b);
   });
 }
 
-export function getAnswerLogs(result) {
-  return sortLogsChronologically(result?.answer_logs);
+/** attempt_logs 전용 — lastSubmission / details 폴백 없음 */
+export function getAttemptLogs(result) {
+  const logs = result?.attempt_logs ?? result?.answer_logs ?? [];
+  return sortAttemptLogs(logs);
 }
 
 export function getTestAttempts(result) {
   return ensureArray(result?.test_attempts);
 }
 
-export function getWrongAnswerLogsForQuestion(result, questionId) {
+/** WHERE is_correct = false 고정 */
+export function getWrongAttemptLogs(result) {
+  return getAttemptLogs(result).filter((log) => normalizeIsCorrect(log) === false);
+}
+
+export function getWrongAttemptLogsForQuestion(result, questionId) {
   if (questionId == null) return [];
 
-  return getAnswerLogs(result).filter(
+  return getWrongAttemptLogs(result).filter(
     (log) =>
-      (log.questionId === questionId || String(log.questionId) === String(questionId)) &&
-      log.isCorrect === false
+      log.questionId === questionId || String(log.questionId) === String(questionId)
   );
 }
 
-export function getLatestWrongAnswerRaw(result, questionId, detail = null) {
-  const wrongLogs = getWrongAnswerLogsForQuestion(result, questionId);
-  if (wrongLogs.length > 0) {
-    return wrongLogs[wrongLogs.length - 1].userAnswer;
+export function formatAttemptLabel(log) {
+  const attemptNumber = Number(log?.attemptNumber ?? 1);
+  const attemptType = log?.attemptType ?? ATTEMPT_TYPES.EXAM;
+
+  if (attemptType === ATTEMPT_TYPES.CLINIC) {
+    return `오답 노트 (${attemptNumber}회)`;
   }
-
-  const history = ensureArray(detail?.wrongAnswerHistory);
-  if (history.length > 0) {
-    return history[history.length - 1].userAnswer;
+  if (attemptType === ATTEMPT_TYPES.RETEST || attemptNumber > 1) {
+    return `${attemptNumber}차 시험`;
   }
-
-  if (detail?.examRetest) {
-    const previousWrong = coalesceStudentAnswer(
-      detail.examRetest.previousUserAnswer,
-      detail.examRetest.previousStudentAnswer,
-      detail.examRetest.previousUserResponse
-    );
-    if (previousWrong != null) return previousWrong;
-
-    if (detail.examRetest.correct === false) {
-      return coalesceStudentAnswer(
-        detail.examRetest.userAnswer,
-        detail.examRetest.studentAnswer,
-        detail.examRetest.userResponse
-      );
-    }
-  }
-
-  if (detail?.clinicRetest?.correct === false) {
-    return coalesceStudentAnswer(
-      detail.clinicRetest.userAnswer,
-      detail.clinicRetest.studentAnswer,
-      detail.clinicRetest.userResponse
-    );
-  }
-
-  if (detail?.correct === false) {
-    return resolveDetailStudentAnswer(detail, result);
-  }
-
-  return null;
+  return "1차 시험";
 }
 
-export function buildWrongAnswerHistoryForDetail(result, questionId, detail) {
-  const logs = getWrongAnswerLogsForQuestion(result, questionId);
-  return logs.map((log) => ({
+/** attempt_id / attemptNumber 기준 시점별 오답 목록 */
+export function getWrongAnswersGroupedByAttempt(result, questionId) {
+  return getWrongAttemptLogsForQuestion(result, questionId).map((log) => ({
+    attemptId: normalizeAttemptId(log),
+    attemptNumber: Number(log.attemptNumber ?? 1),
+    attemptType: log.attemptType ?? ATTEMPT_TYPES.EXAM,
+    label: formatAttemptLabel(log),
     userAnswer: log.userAnswer,
     submittedAt: log.submittedAt,
-    attemptNumber: log.attemptNumber,
-    attemptType: log.attemptType,
     isCorrect: false,
   }));
 }
 
+/** 1차 시험에서 틀린 답 (attempt_logs only) */
+export function getFirstAttemptWrongAnswer(result, questionId) {
+  const logs = getWrongAttemptLogsForQuestion(result, questionId).filter(
+    (log) => Number(log.attemptNumber) === 1 && log.attemptType === ATTEMPT_TYPES.EXAM
+  );
+  if (logs.length > 0) return logs[0].userAnswer;
+
+  const fallbackFirst = getWrongAttemptLogsForQuestion(result, questionId).find(
+    (log) => Number(log.attemptNumber) === 1
+  );
+  return fallbackFirst?.userAnswer ?? null;
+}
+
+/** @deprecated lastSubmission 폴백 제거 — attempt_logs 오답 중 마지막 시점 */
+export function getLatestWrongAnswerRaw(result, questionId) {
+  const logs = getWrongAttemptLogsForQuestion(result, questionId);
+  if (logs.length === 0) return null;
+  return logs[logs.length - 1].userAnswer;
+}
+
+export function buildWrongAnswerHistoryForDetail(result, questionId) {
+  return getWrongAnswersGroupedByAttempt(result, questionId);
+}
+
 function backfillLegacyAttemptLogs(result) {
-  const existing = getAnswerLogs(result);
+  const existing = getAttemptLogs(result);
   if (existing.length > 0) {
-    return { answer_logs: existing, test_attempts: getTestAttempts(result) };
+    return {
+      attempt_logs: existing,
+      answer_logs: existing,
+      test_attempts: getTestAttempts(result),
+    };
   }
 
   const submittedAt = result?.submittedAt ?? new Date().toISOString();
   const attemptNumber = Number(result?.attemptCount ?? 1);
-  const answer_logs = buildAnswerLogsFromDetails(result?.details, {
+  const attemptType = attemptNumber > 1 ? ATTEMPT_TYPES.RETEST : ATTEMPT_TYPES.EXAM;
+
+  const attempt_logs = buildAttemptLogsFromDetails(result?.details, {
     ...result,
     submittedAt,
     attemptNumber,
-    attemptType: attemptNumber > 1 ? ATTEMPT_TYPES.RETEST : ATTEMPT_TYPES.EXAM,
+    attemptType,
   });
 
-  const test_attempts = [
-    {
-      attemptNumber,
-      submittedAt,
-      attemptType: attemptNumber > 1 ? ATTEMPT_TYPES.RETEST : ATTEMPT_TYPES.EXAM,
-      score: Number(result?.score ?? 0),
-      total: Number(result?.total ?? 0),
-      answer_logs,
-    },
-  ];
+  const test_attempts = [buildTestAttemptRecord({ ...result, details: result?.details }, attemptType)];
 
   ensureArray(result?.details).forEach((detail) => {
     if (!detail?.examRetest) return;
 
-    const firstWrong = coalesceStudentAnswer(
-      detail.examRetest.previousUserAnswer,
-      detail.examRetest.previousStudentAnswer
-    );
-    if (firstWrong == null) return;
+    const firstWrong = preserveRawSubmittedAnswer(detail.examRetest.previousUserAnswer);
+    if (!firstWrong) return;
 
-    const alreadyHasFirst = answer_logs.some(
+    const alreadyHasFirst = attempt_logs.some(
       (log) =>
         log.questionId === detail.questionId &&
-        log.isCorrect === false &&
-        log.attemptNumber <= 1
+        normalizeIsCorrect(log) === false &&
+        Number(log.attemptNumber) === 1
     );
 
     if (!alreadyHasFirst) {
-      answer_logs.push(
-        createAnswerLogEntry({
+      attempt_logs.push(
+        createAttemptLogEntry({
           questionId: detail.questionId,
           num: detail.num,
           userAnswer: firstWrong,
           isCorrect: false,
-          submittedAt,
+          submittedAt: detail.examRetest.submittedAt ?? submittedAt,
           attemptNumber: 1,
           attemptType: ATTEMPT_TYPES.EXAM,
+          resultId: result?.id ?? null,
         })
       );
     }
   });
 
+  const sorted = sortAttemptLogs(attempt_logs);
   return {
-    answer_logs: sortLogsChronologically(answer_logs),
+    attempt_logs: sorted,
+    answer_logs: sorted,
     test_attempts,
   };
 }
@@ -214,56 +273,71 @@ function backfillLegacyAttemptLogs(result) {
 export function appendTestAttemptToResult(previousResult, nextResult, attemptType) {
   const attemptRecord = buildTestAttemptRecord(nextResult, attemptType);
   const previousAttempts = getTestAttempts(previousResult);
-  const previousLogs = previousResult ? getAnswerLogs(previousResult) : [];
+  const previousLogs = previousResult ? getAttemptLogs(previousResult) : [];
 
   const test_attempts = [...previousAttempts, attemptRecord];
-  const answer_logs = sortLogsChronologically([
+  const attempt_logs = sortAttemptLogs([
     ...previousLogs,
-    ...attemptRecord.answer_logs,
+    ...ensureArray(attemptRecord.attempt_logs),
   ]);
 
   return {
     ...nextResult,
     test_attempts,
-    answer_logs,
+    attempt_logs,
+    answer_logs: attempt_logs,
   };
 }
 
 export function syncWrongAnswerHistoryOnResult(result) {
-  const { answer_logs, test_attempts } = backfillLegacyAttemptLogs(result);
+  const { attempt_logs, test_attempts } = backfillLegacyAttemptLogs(result);
 
   const details = ensureArray(result?.details).map((detail) => {
     const wrongAnswerHistory = buildWrongAnswerHistoryForDetail(
-      { ...result, answer_logs },
-      detail.questionId,
-      detail
+      { ...result, attempt_logs },
+      detail.questionId
     );
-
-    const latestWrong = wrongAnswerHistory.length
-      ? wrongAnswerHistory[wrongAnswerHistory.length - 1].userAnswer
-      : null;
 
     return {
       ...detail,
       wrongAnswerHistory,
-      ...(latestWrong != null ? { lastWrongAnswer: latestWrong } : {}),
     };
   });
 
   return {
     ...result,
     details,
-    answer_logs,
+    attempt_logs,
+    answer_logs: attempt_logs,
     test_attempts: test_attempts.length ? test_attempts : getTestAttempts(result),
   };
 }
 
-export function hasWrongAnswerHistory(result, questionId, detail = null) {
-  return getLatestWrongAnswerRaw(result, questionId, detail) != null;
+export function hasWrongAnswerHistory(result, questionId) {
+  return getWrongAttemptLogsForQuestion(result, questionId).length > 0;
 }
 
 export function detailNeedsRetestReview(detail, result) {
   if (!detail) return false;
-  if (detail.correct === false) return true;
-  return hasWrongAnswerHistory(result, detail.questionId, detail);
+  return hasWrongAnswerHistory(result, detail.questionId);
 }
+
+export function getRetestReviewQuestionIds(result) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const ids = new Set();
+
+  getWrongAttemptLogs(synced)
+    .filter((log) => Number(log.attemptNumber) === 1)
+    .forEach((log) => ids.add(log.questionId));
+
+  if (ids.size === 0) {
+    getWrongAttemptLogs(synced).forEach((log) => ids.add(log.questionId));
+  }
+
+  return ids;
+}
+
+// Legacy aliases
+export const createAnswerLogEntry = createAttemptLogEntry;
+export const buildAnswerLogsFromDetails = buildAttemptLogsFromDetails;
+export const getAnswerLogs = getAttemptLogs;
