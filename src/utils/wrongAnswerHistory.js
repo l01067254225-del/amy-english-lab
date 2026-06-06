@@ -158,12 +158,11 @@ export function getWrongAttemptLogs(result) {
   return getAttemptLogs(result).filter((log) => normalizeIsCorrect(log) === false);
 }
 
-export function getWrongAttemptLogsForQuestion(result, questionId) {
-  if (questionId == null) return [];
+export function getWrongAttemptLogsForQuestion(result, questionId, num = null) {
+  if (questionId == null && num == null) return [];
 
-  return getWrongAttemptLogs(result).filter(
-    (log) =>
-      log.questionId === questionId || String(log.questionId) === String(questionId)
+  return getWrongAttemptLogs(result).filter((log) =>
+    matchAttemptLogToQuestion(log, { questionId, num })
   );
 }
 
@@ -245,6 +244,204 @@ function readRawUserAnswerFromLog(log) {
   );
 }
 
+export function isUserAnswerPresent(value) {
+  return value !== null && value !== undefined;
+}
+
+/** questionId 또는 num(Q1~Q10) 기준 attempt_log 매칭 */
+export function matchAttemptLogToQuestion(log, { questionId, num } = {}) {
+  if (!log) return false;
+
+  const qKey = questionId != null ? String(questionId) : null;
+  const questionNum = num != null ? Number(num) : null;
+  const logQuestionId = log.question_id ?? log.questionId;
+  const logNum = log.num != null ? Number(log.num) : null;
+
+  if (qKey && logQuestionId != null && String(logQuestionId) === qKey) return true;
+  if (questionNum != null && logNum != null && logNum === questionNum) return true;
+
+  return false;
+}
+
+export function findAttemptLogForQuestion(logs, { questionId, num } = {}) {
+  return ensureArray(logs).find((log) => matchAttemptLogToQuestion(log, { questionId, num })) ?? null;
+}
+
+export function getAttemptLogsForNumber(result, attemptNumber) {
+  return getAttemptLogs(result).filter(
+    (log) => Number(log.attempt_number ?? log.attemptNumber ?? 1) === Number(attemptNumber)
+  );
+}
+
+function findDetailForQuestion(result, { questionId, num } = {}) {
+  return (
+    ensureArray(result?.details).find((detail) => matchAttemptLogToQuestion(detail, { questionId, num })) ??
+    null
+  );
+}
+
+function readSubmissionFromAnswersMap(result, questionId) {
+  const map = result?.answers ?? result?.responses ?? {};
+  if (!map || typeof map !== "object") return null;
+
+  if (questionId == null) return null;
+
+  if (map[questionId] !== undefined) return preserveRawSubmittedAnswer(map[questionId]);
+  if (map[String(questionId)] !== undefined) return preserveRawSubmittedAnswer(map[String(questionId)]);
+
+  return null;
+}
+
+/**
+ * attempt_logs(응시) + details(채점) join — questionId/num 기준
+ * @returns {{ status: 'found'|'missing', user_answer: string|null, is_correct: boolean|null, source: string|null, attemptNumber: number, fallbackFrom?: number }}
+ */
+export function resolveJoinedAttemptAnswer(result, attemptNumber, { questionId, num } = {}) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const normalizedAttempt = Number(attemptNumber) || 1;
+
+  const historySession =
+    buildAttemptHistoryFromResult(synced).find(
+      (item) => Number(item.attempt_number) === normalizedAttempt
+    ) ?? null;
+
+  if (historySession) {
+    const record =
+      findAttemptLogForQuestion(historySession.records, { questionId, num }) ??
+      historySession.records.find((item) => matchAttemptLogToQuestion(item, { questionId, num }));
+
+    if (record) {
+      const user_answer = preserveRawSubmittedAnswer(record.user_answer);
+      return {
+        status: "found",
+        user_answer,
+        is_correct: record.is_correct ?? null,
+        source: "attempt_history",
+        attemptNumber: normalizedAttempt,
+      };
+    }
+  }
+
+  const testAttempt = sortTestAttempts(getTestAttempts(synced)).find(
+    (item) => Number(item.attempt_number ?? item.attemptNumber) === normalizedAttempt
+  );
+  if (testAttempt) {
+    const log = findAttemptLogForQuestion(getSessionAttemptLogs(testAttempt), { questionId, num });
+    if (log) {
+      return {
+        status: "found",
+        user_answer: readRawUserAnswerFromLog(log),
+        is_correct: normalizeIsCorrect(log),
+        source: "test_attempts",
+        attemptNumber: normalizedAttempt,
+      };
+    }
+  }
+
+  const flatLog = findAttemptLogForQuestion(getAttemptLogsForNumber(synced, normalizedAttempt), {
+    questionId,
+    num,
+  });
+  if (flatLog) {
+    return {
+      status: "found",
+      user_answer: readRawUserAnswerFromLog(flatLog),
+      is_correct: normalizeIsCorrect(flatLog),
+      source: "attempt_logs",
+      attemptNumber: normalizedAttempt,
+    };
+  }
+
+  const detail = findDetailForQuestion(synced, { questionId, num });
+  const gradingCorrect = detail?.correct === true ? true : detail?.correct === false ? false : null;
+
+  if (normalizedAttempt === 1 && detail?.examRetest?.previousUserAnswer != null) {
+    return {
+      status: "found",
+      user_answer: preserveRawSubmittedAnswer(detail.examRetest.previousUserAnswer),
+      is_correct: false,
+      source: "exam_retest_join",
+      attemptNumber: normalizedAttempt,
+    };
+  }
+
+  if (normalizedAttempt === 1) {
+    const fromMap = readSubmissionFromAnswersMap(synced, questionId);
+    if (isUserAnswerPresent(fromMap)) {
+      return {
+        status: "found",
+        user_answer: fromMap,
+        is_correct: gradingCorrect,
+        source: "answers_join",
+        attemptNumber: normalizedAttempt,
+      };
+    }
+  }
+
+  if (detail) {
+    const fromDetail =
+      detail.userAnswer ?? detail.studentAnswer ?? detail.userResponse ?? null;
+    if (isUserAnswerPresent(fromDetail) && normalizedAttempt === Number(synced.attemptCount ?? 1)) {
+      return {
+        status: "found",
+        user_answer: preserveRawSubmittedAnswer(fromDetail),
+        is_correct: gradingCorrect,
+        source: "details_join",
+        attemptNumber: normalizedAttempt,
+      };
+    }
+  }
+
+  return {
+    status: "missing",
+    user_answer: null,
+    is_correct: gradingCorrect,
+    source: null,
+    attemptNumber: normalizedAttempt,
+  };
+}
+
+/** attempt_number=1 우선, 없으면 다음 회차 순회 */
+export function resolveJoinedAttemptAnswerWithFallback(result, { questionId, num, startAttemptNumber = 1 } = {}) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const attemptNumbers = [
+    ...new Set(
+      getExamAttemptHistory(synced)
+        .map((item) => Number(item.attempt_number))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .sort((a, b) => a - b)
+    ),
+  ];
+
+  if (attemptNumbers.length === 0) {
+    attemptNumbers.push(Number(startAttemptNumber) || 1);
+  }
+
+  const ordered = [
+    Number(startAttemptNumber) || 1,
+    ...attemptNumbers.filter((value) => value !== (Number(startAttemptNumber) || 1)),
+  ];
+
+  for (const attemptNumber of ordered) {
+    const resolved = resolveJoinedAttemptAnswer(synced, attemptNumber, { questionId, num });
+    if (resolved.status === "found") {
+      return {
+        ...resolved,
+        fallbackFrom: attemptNumber !== (Number(startAttemptNumber) || 1) ? attemptNumber : null,
+      };
+    }
+  }
+
+  return {
+    status: "missing",
+    user_answer: null,
+    is_correct: null,
+    source: null,
+    attemptNumber: Number(startAttemptNumber) || 1,
+    fallbackFrom: null,
+  };
+}
+
 /** attempt_history 테이블 레코드 정규화 (test_attempts → attempt_history) */
 export function normalizeAttemptHistoryRecord(session) {
   const attempt_number = Number(session?.attempt_number ?? session?.attemptNumber ?? 1);
@@ -259,7 +456,8 @@ export function normalizeAttemptHistoryRecord(session) {
     score: session?.score ?? null,
     total: session?.total ?? null,
     records: logs.map((log) => ({
-      question_id: log.questionId,
+      question_id: log.questionId ?? log.question_id ?? null,
+      questionId: log.questionId ?? log.question_id ?? null,
       num: log.num ?? null,
       user_answer: readRawUserAnswerFromLog(log),
       is_correct: normalizeIsCorrect(log),
@@ -278,35 +476,17 @@ function buildAttemptHistoryFromResult(result) {
 }
 
 /**
- * attempt_history 테이블 조회 — results/details 폴백 없음
- * attempt_number 오름차순, 각 회차 records는 독립 스냅샷
+ * attempt_history 테이블 조회 — 항상 attempt_logs/test_attempts에서 재구성
  */
 export function getAttemptHistory(result) {
   const synced = syncWrongAnswerHistoryOnResult(result);
-  const stored = ensureArray(synced.attempt_history);
-
-  if (stored.length > 0) {
-    return sortTestAttempts(stored.map(normalizeAttemptHistoryRecord));
-  }
-
   return buildAttemptHistoryFromResult(synced);
 }
 
-/** attempt_number + question_id로 user_answer 1:1 조회 (다른 회차 폴백 없음) */
-export function getUserAnswerAtAttempt(result, attemptNumber, questionId) {
-  if (questionId == null) return null;
-
-  const session = getAttemptHistory(result).find(
-    (item) => Number(item.attempt_number) === Number(attemptNumber)
-  );
-  if (!session) return null;
-
-  const record = session.records.find(
-    (item) =>
-      item.question_id === questionId || String(item.question_id) === String(questionId)
-  );
-
-  return record?.user_answer ?? null;
+/** attempt_number + question_id/num으로 user_answer 1:1 조회 */
+export function getUserAnswerAtAttempt(result, attemptNumber, questionId, num = null) {
+  const resolved = resolveJoinedAttemptAnswer(result, attemptNumber, { questionId, num });
+  return resolved.status === "found" ? resolved.user_answer : null;
 }
 
 /** 시험/재시험 회차만 (관리자 상세용) */

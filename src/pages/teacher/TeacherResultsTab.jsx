@@ -88,15 +88,25 @@ export default function TeacherResultsTab({
     ? registryRows.find((row) => row.id === detailTarget.id) ?? detailTarget
     : null;
 
+  const [detailLoading, setDetailLoading] = useState(false);
+
   useEffect(() => {
-    if (!detailTarget?.id) return;
+    if (!detailTarget?.id) {
+      setDetailLoading(false);
+      return;
+    }
 
     let cancelled = false;
+    setDetailLoading(true);
 
     (async () => {
-      const fresh = await fetchResultById(detailTarget.id, { cache: "no-store" });
-      if (cancelled || !fresh) return;
-      setDetailTarget(fresh);
+      try {
+        const fresh = await fetchResultById(detailTarget.id, { cache: "no-store" });
+        if (cancelled) return;
+        if (fresh) setDetailTarget(fresh);
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
     })();
 
     return () => {
@@ -311,6 +321,7 @@ export default function TeacherResultsTab({
         <TeacherResultDetailModal
           result={detailRow}
           studentLevel={detailRow.level === "—" ? "" : detailRow.level}
+          loading={detailLoading}
           onClose={() => setDetailTarget(null)}
         />
       )}

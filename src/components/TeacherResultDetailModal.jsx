@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { formatDate } from "../services/resultsApi";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchResultById, formatDate } from "../services/resultsApi";
 import {
   buildAttemptWiseDetailView,
   hasAttemptWiseHistory,
@@ -23,23 +23,82 @@ function ResultMark({ correct }) {
   );
 }
 
-function AnswerCell({ text, variant = "neutral" }) {
+function AnswerCell({ answer, variant = "neutral" }) {
   const styles = {
     neutral: answerNeutralStyle,
     wrong: answerWrongStyle,
     correct: answerCorrectStyle,
+    empty: answerEmptyStyle,
+    missing: answerMissingStyle,
+    loading: answerLoadingStyle,
   };
 
-  return <span style={styles[variant] ?? answerNeutralStyle}>{text === "" ? "—" : text}</span>;
+  if (!answer || answer.status === "loading") {
+    return <span style={styles.loading}>데이터 로딩 중...</span>;
+  }
+
+  if (answer.status === "missing") {
+    return <span style={styles.missing}>답안 기록 없음</span>;
+  }
+
+  if (answer.isEmptyString) {
+    return (
+      <span style={styles.empty} title="학생이 빈 문자열을 제출함">
+        (빈 답안)
+      </span>
+    );
+  }
+
+  const text = answer.userAnswer ?? "";
+  return <span style={styles[variant] ?? answerNeutralStyle}>{text}</span>;
 }
 
-export default function TeacherResultDetailModal({ result, studentLevel, onClose }) {
+export default function TeacherResultDetailModal({
+  result: initialResult,
+  studentLevel,
+  onClose,
+  loading: externalLoading = false,
+}) {
   const [selectedAttempt, setSelectedAttempt] = useState("all");
+  const [result, setResult] = useState(initialResult);
+  const [fetchState, setFetchState] = useState("idle");
+  const [retryCount, setRetryCount] = useState(0);
 
-  const { columns, rows } = useMemo(
-    () => buildAttemptWiseDetailView(result),
-    [result]
-  );
+  useEffect(() => {
+    setResult(initialResult);
+  }, [initialResult]);
+
+  const reloadResult = useCallback(async () => {
+    if (!initialResult?.id) return;
+
+    setFetchState("loading");
+    try {
+      const fresh = await fetchResultById(initialResult.id, { cache: "no-store" });
+      if (fresh) {
+        setResult(fresh);
+        setFetchState("ready");
+      } else {
+        setFetchState("error");
+      }
+    } catch {
+      setFetchState("error");
+    }
+  }, [initialResult?.id]);
+
+  useEffect(() => {
+    reloadResult();
+  }, [reloadResult, retryCount]);
+
+  const isLoading = externalLoading || fetchState === "loading";
+
+  const detailView = useMemo(() => {
+    if (!result || isLoading) {
+      return { columns: [], rows: [], attemptHistory: [], isReady: false };
+    }
+    return buildAttemptWiseDetailView(result);
+  }, [result, isLoading]);
+
+  const { columns, rows, isReady } = detailView;
 
   const visibleColumns = useMemo(() => {
     if (selectedAttempt === "all") return columns;
@@ -49,7 +108,7 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
 
   const hasMultipleAttempts = hasAttemptWiseHistory(result);
 
-  if (!result) return null;
+  if (!initialResult) return null;
 
   return (
     <div style={overlayStyle} onClick={onClose}>
@@ -60,7 +119,8 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
               학생 시험 결과 상세
             </h2>
             <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
-              {result.studentName} · {formatLevelLabel(studentLevel)} · {result.testTitle}
+              {result?.studentName ?? initialResult.studentName} ·{" "}
+              {formatLevelLabel(studentLevel)} · {result?.testTitle ?? initialResult.testTitle}
             </p>
           </div>
           <button type="button" onClick={onClose} style={closeBtnStyle}>
@@ -69,13 +129,22 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
         </div>
 
         <div style={summaryRowStyle}>
-          {columns.map((column) => (
-            <span key={column.attemptId ?? column.attemptNumber} style={summaryChipStyle}>
-              {column.columnLabel}: {column.score ?? "—"}/{column.total ?? "—"}점
-              {column.submittedAt ? ` · ${formatDate(column.submittedAt)}` : ""}
-            </span>
-          ))}
-          <span style={dataSourceChipStyle}>데이터 출처: attempt_history</span>
+          {isLoading ? (
+            <span style={summaryChipStyle}>데이터 로딩 중...</span>
+          ) : (
+            columns.map((column) => (
+              <span key={column.attemptId ?? column.attemptNumber} style={summaryChipStyle}>
+                {column.columnLabel}: {column.score ?? "?"}/{column.total ?? "?"}점
+                {column.submittedAt ? ` · ${formatDate(column.submittedAt)}` : ""}
+              </span>
+            ))
+          )}
+          <span style={dataSourceChipStyle}>attempt_logs + answers join</span>
+          {fetchState === "error" && (
+            <button type="button" onClick={() => setRetryCount((count) => count + 1)} style={retryBtnStyle}>
+              DB 재조회
+            </button>
+          )}
         </div>
 
         <div style={toolbarStyle}>
@@ -85,6 +154,7 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
               value={selectedAttempt}
               onChange={(event) => setSelectedAttempt(event.target.value)}
               style={selectStyle}
+              disabled={isLoading}
             >
               <option value="all">전체 회차 (나란히 비교)</option>
               {columns.map((column) => (
@@ -97,15 +167,20 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
         </div>
 
         <p style={historyHintStyle}>
-          학생 답안은 <strong>attempt_history</strong>에서 <code>attempt_number</code>별로
-          독립 조회합니다. 1차 시험의 부분 답안(예: 슬래시 앞 단어만 입력)도 DB 로그와 1:1로
-          표시되며, 재시험 데이터가 1차 데이터를 덮어쓰지 않습니다.
+          Q1~Q10 답안은 <strong>attempt_number=1</strong> attempt_logs를 우선 조회하고, 없으면 다음
+          회차를 순회합니다. 응시 데이터(answers)와 채점 데이터(details)를 questionId/num 기준으로
+          join합니다.
         </p>
 
-        {columns.length === 0 ? (
-          <p style={{ margin: "16px 0 0", color: "#64748b" }}>
-            attempt_history 기록이 없어 상세 답안을 표시할 수 없습니다.
-          </p>
+        {isLoading ? (
+          <p style={{ margin: "16px 0 0", color: "#64748b" }}>데이터 로딩 중...</p>
+        ) : rows.length === 0 ? (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ margin: "0 0 8px", color: "#64748b" }}>답안 기록 없음</p>
+            <button type="button" onClick={() => setRetryCount((count) => count + 1)} style={retryBtnStyle}>
+              DB 재조회
+            </button>
+          </div>
         ) : (
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
@@ -129,7 +204,7 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
 
                   return (
                     <tr
-                      key={row.questionId ?? row.num}
+                      key={`${row.questionId ?? "q"}-${row.num}`}
                       style={hasWrongInVisible ? wrongRowStyle : null}
                     >
                       <td style={tdStyle}>
@@ -137,31 +212,38 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
                       </td>
                       <td style={tdStyle}>{row.prompt}</td>
                       {visibleColumns.map((column) => {
-                        const answer = row.answersByAttempt[column.attemptNumber];
+                        const answer = row.answersByAttempt[column.attemptNumber] ?? {
+                          status: "missing",
+                        };
+
                         return (
                           <td key={column.attemptNumber} style={tdStyle}>
-                            {answer ? (
-                              <div style={answerStackStyle}>
-                                <AnswerCell
-                                  text={answer.userAnswer}
-                                  variant={
-                                    answer.isCorrect === false
-                                      ? "wrong"
-                                      : answer.isCorrect === true
-                                        ? "correct"
-                                        : "neutral"
-                                  }
-                                />
-                                <ResultMark correct={answer.isCorrect} />
-                              </div>
-                            ) : (
-                              <span style={{ color: "#94a3b8" }}>—</span>
-                            )}
+                            <div style={answerStackStyle}>
+                              <AnswerCell
+                                answer={answer}
+                                variant={
+                                  answer.isCorrect === false
+                                    ? "wrong"
+                                    : answer.isCorrect === true
+                                      ? "correct"
+                                      : "neutral"
+                                }
+                              />
+                              {answer.fallbackFrom && (
+                                <span style={fallbackTagStyle}>
+                                  {answer.fallbackFrom}회차에서 조회
+                                </span>
+                              )}
+                              <ResultMark correct={answer.isCorrect} />
+                            </div>
                           </td>
                         );
                       })}
                       <td style={tdStyle}>
-                        <AnswerCell text={row.correctAnswer} variant="correct" />
+                        <AnswerCell
+                          answer={{ status: "found", userAnswer: row.correctAnswer, isEmptyString: false }}
+                          variant="correct"
+                        />
                       </td>
                     </tr>
                   );
@@ -171,10 +253,17 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
           </div>
         )}
 
-        {hasMultipleAttempts && selectedAttempt === "all" && (
+        {!isLoading && !isReady && rows.length > 0 && (
           <p style={legendStyle}>
-            각 회차 답안은 attempt_number별 독립 레코드입니다. 열을 좌우로 비교해 1차와 재시
-            답안 차이를 확인하세요.
+            attempt_logs에 답안이 없어 answers/details join을 시도했습니다. 여전히 비어 있다면
+            「DB 재조회」를 눌러주세요.
+          </p>
+        )}
+
+        {hasMultipleAttempts && selectedAttempt === "all" && isReady && (
+          <p style={legendStyle}>
+            각 회차 답안은 attempt_number별 독립 레코드입니다. 1차 답안이 없으면 다음 회차에서
+            자동 조회됩니다.
           </p>
         )}
       </div>
@@ -222,11 +311,23 @@ const closeBtnStyle = {
   flexShrink: 0,
 };
 
+const retryBtnStyle = {
+  padding: "6px 12px",
+  borderRadius: 999,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
 const summaryRowStyle = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
   marginBottom: 12,
+  alignItems: "center",
 };
 
 const summaryChipStyle = {
@@ -332,6 +433,15 @@ const answerStackStyle = {
   flexWrap: "wrap",
 };
 
+const fallbackTagStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#64748b",
+  background: "#f1f5f9",
+  padding: "2px 6px",
+  borderRadius: 999,
+};
+
 const answerNeutralStyle = {
   display: "inline-block",
   padding: "4px 8px",
@@ -356,6 +466,29 @@ const answerCorrectStyle = {
   border: "1px solid #bbf7d0",
   color: "#047857",
   fontWeight: 700,
+};
+
+const answerEmptyStyle = {
+  ...answerNeutralStyle,
+  background: "#fffbeb",
+  border: "1px dashed #fcd34d",
+  color: "#92400e",
+  fontStyle: "italic",
+};
+
+const answerMissingStyle = {
+  ...answerNeutralStyle,
+  background: "#f8fafc",
+  border: "1px dashed #cbd5e1",
+  color: "#64748b",
+  fontSize: 13,
+};
+
+const answerLoadingStyle = {
+  ...answerMissingStyle,
+  color: "#1d4ed8",
+  borderColor: "#bfdbfe",
+  background: "#eff6ff",
 };
 
 const legendStyle = {

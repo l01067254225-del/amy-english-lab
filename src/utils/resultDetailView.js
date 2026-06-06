@@ -4,7 +4,9 @@ import { formatStoredUserAnswer } from "./examRetestStorage";
 import {
   formatAttemptColumnLabel,
   getExamAttemptHistory,
-  getUserAnswerAtAttempt,
+  isUserAnswerPresent,
+  resolveJoinedAttemptAnswer,
+  resolveJoinedAttemptAnswerWithFallback,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
@@ -20,9 +22,10 @@ function buildQuestionMetaMap(result) {
   const metaByQuestionId = new Map();
 
   ensureArray(synced.details).forEach((detail) => {
-    if (detail?.questionId == null) return;
+    if (detail?.questionId == null && detail?.num == null) return;
     const question = resolveQuestionForDetail(questions, detail);
-    metaByQuestionId.set(String(detail.questionId), {
+    const key = detail.questionId != null ? String(detail.questionId) : `num-${detail.num}`;
+    metaByQuestionId.set(key, {
       num: detail.num,
       questionId: detail.questionId,
       prompt: String(question?.prompt ?? "").trim() || "(문항 정보 없음)",
@@ -34,84 +37,112 @@ function buildQuestionMetaMap(result) {
   return { synced, questions, metaByQuestionId };
 }
 
-function buildAnswerCellFromHistory(rawUserAnswer, isCorrect, question) {
+function buildAnswerCellFromResolved(resolved, question) {
+  const rawUserAnswer = resolved.user_answer;
+  const hasRecord = resolved.status === "found";
+
   return {
-    userAnswer: formatStoredUserAnswer(question, rawUserAnswer),
-    rawUserAnswer: rawUserAnswer ?? "",
-    isCorrect: isCorrect ?? null,
+    userAnswer: hasRecord ? formatStoredUserAnswer(question, rawUserAnswer) : null,
+    rawUserAnswer: hasRecord ? rawUserAnswer : null,
+    isCorrect: resolved.is_correct ?? null,
+    status: hasRecord ? "found" : "missing",
+    source: resolved.source,
+    fallbackFrom: resolved.fallbackFrom ?? null,
+    isEmptyString: hasRecord && rawUserAnswer === "",
   };
 }
 
 /**
- * attempt_history 테이블 기준 — 문항 × 응시회차 매트릭스
- * results.details / 최종 제출본 미사용
+ * attempt_history + attempt_logs + answers/details join
+ * Q1~Q10(details) 기준, attempt_number별 독립 답안
  */
 export function buildAttemptWiseDetailView(result) {
   if (!result) {
-    return { columns: [], rows: [], attemptHistory: [] };
+    return { columns: [], rows: [], attemptHistory: [], isReady: false };
   }
 
   const { synced, questions, metaByQuestionId } = buildQuestionMetaMap(result);
   const attemptHistory = getExamAttemptHistory(synced);
 
-  const columns = attemptHistory.map((session) => ({
-    attemptNumber: session.attempt_number,
-    attemptId: session.attempt_id,
-    columnLabel: formatAttemptColumnLabel(session, attemptHistory),
-    submittedAt: session.submitted_at,
-    score: session.score,
-    total: session.total,
-  }));
+  const columns =
+    attemptHistory.length > 0
+      ? attemptHistory.map((session) => ({
+          attemptNumber: session.attempt_number,
+          attemptId: session.attempt_id,
+          columnLabel: formatAttemptColumnLabel(session, attemptHistory),
+          submittedAt: session.submitted_at,
+          score: session.score,
+          total: session.total,
+        }))
+      : [
+          {
+            attemptNumber: 1,
+            attemptId: null,
+            columnLabel: "1차 답안",
+            submittedAt: synced.submittedAt,
+            score: synced.score,
+            total: synced.total,
+          },
+        ];
 
-  const questionIdSet = new Set(metaByQuestionId.keys());
-  attemptHistory.forEach((session) => {
-    session.records.forEach((record) => {
-      if (record.question_id != null) {
-        questionIdSet.add(String(record.question_id));
-      }
-    });
-  });
+  const detailRows = ensureArray(synced.details);
+  const rowSource =
+    detailRows.length > 0
+      ? detailRows
+      : attemptHistory.flatMap((session) =>
+          session.records.map((record) => ({
+            questionId: record.question_id ?? record.questionId,
+            num: record.num,
+          }))
+        );
 
-  const rows = [...questionIdSet]
-    .map((questionKey) => {
+  const rows = rowSource
+    .map((detail) => {
+      const questionKey =
+        detail.questionId != null ? String(detail.questionId) : `num-${detail.num}`;
       const meta = metaByQuestionId.get(questionKey);
       const question =
-        meta?.question ??
-        resolveQuestionForDetail(questions, { questionId: questionKey, num: meta?.num });
+        meta?.question ?? resolveQuestionForDetail(questions, detail);
+      const questionId = detail.questionId ?? meta?.questionId;
+      const num = detail.num ?? meta?.num;
 
       const answersByAttempt = {};
-      attemptHistory.forEach((session) => {
-        const record = session.records.find(
-          (item) => String(item.question_id) === questionKey
-        );
-        if (!record) return;
 
-        answersByAttempt[session.attempt_number] = buildAnswerCellFromHistory(
-          record.user_answer,
-          record.is_correct,
-          question
-        );
+      columns.forEach((column) => {
+        const attemptNumber = column.attemptNumber;
+        const resolved =
+          attemptNumber === 1
+            ? resolveJoinedAttemptAnswerWithFallback(synced, {
+                questionId,
+                num,
+                startAttemptNumber: 1,
+              })
+            : resolveJoinedAttemptAnswer(synced, attemptNumber, { questionId, num });
+
+        answersByAttempt[attemptNumber] = buildAnswerCellFromResolved(resolved, question);
       });
 
-      const firstAttemptRaw = getUserAnswerAtAttempt(synced, 1, questionKey);
-
       return {
-        num: meta?.num ?? attemptHistory[0]?.records.find((r) => String(r.question_id) === questionKey)?.num,
-        questionId: meta?.questionId ?? questionKey,
+        num,
+        questionId,
         prompt:
           meta?.prompt ??
           (String(question?.prompt ?? "").trim() || "(문항 정보 없음)"),
         correctAnswer: meta?.correctAnswer ?? (question ? formatQuestionAnswer(question) : "—"),
         answersByAttempt,
-        firstAttemptAnswer: buildAnswerCellFromHistory(firstAttemptRaw, null, question),
       };
     })
     .sort((a, b) => Number(a.num ?? 0) - Number(b.num ?? 0));
+
+  const isReady = rows.some((row) =>
+    Object.values(row.answersByAttempt).some((answer) => answer?.status === "found")
+  );
 
   return {
     columns,
     rows,
     attemptHistory,
+    isReady,
   };
 }
 
@@ -122,34 +153,33 @@ export function hasAttemptWiseHistory(result) {
 
 /** @deprecated buildAttemptWiseDetailView 사용 */
 export function buildSessionBasedDetailView(result) {
-  const { columns, rows, attemptHistory } = buildAttemptWiseDetailView(result);
-
-  const sessions = columns.map((column) => ({
-    attemptId: column.attemptId,
-    label: column.columnLabel.replace(" 답안", ""),
-    attemptNumber: column.attemptNumber,
-    submittedAt: column.submittedAt,
-    score: column.score,
-    total: column.total,
-    rows: rows.map((row) => {
-      const answer = row.answersByAttempt[column.attemptNumber];
-      return {
-        num: row.num,
-        questionId: row.questionId,
-        prompt: row.prompt,
-        correctAnswer: row.correctAnswer,
-        userAnswer: answer?.userAnswer ?? "—",
-        rawUserAnswer: answer?.rawUserAnswer ?? "",
-        isCorrect: answer?.isCorrect ?? null,
-      };
-    }),
-  }));
-
+  const view = buildAttemptWiseDetailView(result);
   return {
-    sessions,
+    ...view,
+    sessions: view.columns.map((column) => ({
+      attemptId: column.attemptId,
+      label: column.columnLabel.replace(" 답안", ""),
+      attemptNumber: column.attemptNumber,
+      submittedAt: column.submittedAt,
+      score: column.score,
+      total: column.total,
+      rows: view.rows.map((row) => {
+        const answer = row.answersByAttempt[column.attemptNumber];
+        return {
+          num: row.num,
+          questionId: row.questionId,
+          prompt: row.prompt,
+          correctAnswer: row.correctAnswer,
+          userAnswer: answer?.userAnswer,
+          rawUserAnswer: answer?.rawUserAnswer ?? "",
+          isCorrect: answer?.isCorrect ?? null,
+          status: answer?.status ?? "missing",
+        };
+      }),
+    })),
     summary: {
-      attemptCount: columns.length || 1,
-      attemptScores: columns.map((column) => ({
+      attemptCount: view.columns.length || 1,
+      attemptScores: view.columns.map((column) => ({
         attemptNumber: column.attemptNumber,
         label: column.columnLabel,
         score: column.score,
@@ -157,7 +187,6 @@ export function buildSessionBasedDetailView(result) {
         submittedAt: column.submittedAt,
       })),
     },
-    attemptHistory,
   };
 }
 
@@ -179,7 +208,7 @@ export function buildResultDetailRows(result) {
     wrongAttemptDisplays: columns
       .map((column) => {
         const answer = row.answersByAttempt[column.attemptNumber];
-        if (!answer || answer.isCorrect !== false) return null;
+        if (!answer || answer.status !== "found" || answer.isCorrect !== false) return null;
         return {
           attemptId: column.attemptId,
           label: column.columnLabel,
@@ -190,10 +219,12 @@ export function buildResultDetailRows(result) {
     hasWrongHistory: columns.some(
       (column) => row.answersByAttempt[column.attemptNumber]?.isCorrect === false
     ),
-    wrongAnswerDisplay: row.firstAttemptAnswer?.userAnswer ?? "—",
+    wrongAnswerDisplay: row.answersByAttempt[1]?.userAnswer ?? null,
   }));
 }
 
 export function hasMultiAttemptHistory(result) {
   return hasAttemptWiseHistory(result);
 }
+
+export { isUserAnswerPresent };
