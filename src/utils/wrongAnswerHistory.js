@@ -55,14 +55,18 @@ export function createAttemptLogEntry({
     questionId,
     num: num ?? null,
     userAnswer: serialized,
+    user_answer: serialized,
     studentAnswer: serialized,
     userResponse: serialized,
     is_correct: Boolean(isCorrect),
     isCorrect: Boolean(isCorrect),
     correct: Boolean(isCorrect),
     submittedAt: submittedAt ?? new Date().toISOString(),
+    submitted_at: submittedAt ?? new Date().toISOString(),
     attemptNumber: normalizedAttemptNumber,
+    attempt_number: normalizedAttemptNumber,
     attemptType,
+    attempt_type: attemptType,
   };
 }
 
@@ -113,8 +117,11 @@ export function buildTestAttemptRecord(result, attemptType) {
   return {
     attempt_id,
     attemptNumber,
+    attempt_number: attemptNumber,
     submittedAt,
+    submitted_at: submittedAt,
     attemptType,
+    attempt_type: attemptType,
     score: Number(result?.score ?? 0),
     total: Number(result?.total ?? 0),
     attempt_logs,
@@ -167,25 +174,30 @@ export function formatAttemptLabel(log) {
   });
 }
 
-/** 관리자 상세 — [1차 응시], [재시험 1] 등 응시 단계 라벨 */
-export function formatSessionLabel(attemptRecord, allAttempts = []) {
-  const attemptType = attemptRecord?.attemptType ?? ATTEMPT_TYPES.EXAM;
-  const attemptNumber = Number(attemptRecord?.attemptNumber ?? 1);
+/** 관리자 상세 — [1차 답안], [재시 1차 답안] 등 컬럼 라벨 */
+export function formatAttemptColumnLabel(attemptRecord, allAttempts = []) {
+  const attemptType = attemptRecord?.attempt_type ?? attemptRecord?.attemptType ?? ATTEMPT_TYPES.EXAM;
+  const attemptNumber = Number(attemptRecord?.attempt_number ?? attemptRecord?.attemptNumber ?? 1);
 
   if (attemptType === ATTEMPT_TYPES.CLINIC) {
     const clinicIndex = ensureArray(allAttempts).filter(
       (item) =>
-        item?.attemptType === ATTEMPT_TYPES.CLINIC &&
-        Number(item?.attemptNumber ?? 0) <= attemptNumber
+        (item?.attempt_type ?? item?.attemptType) === ATTEMPT_TYPES.CLINIC &&
+        Number(item?.attempt_number ?? item?.attemptNumber ?? 0) <= attemptNumber
     ).length;
     return clinicIndex > 0 ? `오답 노트 (${clinicIndex}회)` : "오답 노트";
   }
 
-  if (attemptType === ATTEMPT_TYPES.RETEST || attemptNumber > 1) {
-    return `재시험 ${Math.max(1, attemptNumber - 1)}`;
+  if (attemptNumber === 1) {
+    return "1차 답안";
   }
 
-  return "1차 응시";
+  return `재시 ${attemptNumber - 1}차 답안`;
+}
+
+/** 관리자 상세 — [1차 응시], [재시험 1] 등 응시 단계 라벨 */
+export function formatSessionLabel(attemptRecord, allAttempts = []) {
+  return formatAttemptColumnLabel(attemptRecord, allAttempts).replace(" 답안", "");
 }
 
 export function sortTestAttempts(attempts) {
@@ -225,6 +237,91 @@ function groupFlatLogsIntoSessions(logs) {
   });
 
   return sortTestAttempts([...byAttemptId.values()]);
+}
+
+function readRawUserAnswerFromLog(log) {
+  return preserveRawSubmittedAnswer(
+    log?.user_answer ?? log?.userAnswer ?? log?.studentAnswer ?? log?.userResponse
+  );
+}
+
+/** attempt_history 테이블 레코드 정규화 (test_attempts → attempt_history) */
+export function normalizeAttemptHistoryRecord(session) {
+  const attempt_number = Number(session?.attempt_number ?? session?.attemptNumber ?? 1);
+  const attempt_type = session?.attempt_type ?? session?.attemptType ?? ATTEMPT_TYPES.EXAM;
+  const logs = getSessionAttemptLogs(session);
+
+  return {
+    attempt_id: session?.attempt_id ?? null,
+    attempt_number,
+    attempt_type,
+    submitted_at: session?.submitted_at ?? session?.submittedAt ?? null,
+    score: session?.score ?? null,
+    total: session?.total ?? null,
+    records: logs.map((log) => ({
+      question_id: log.questionId,
+      num: log.num ?? null,
+      user_answer: readRawUserAnswerFromLog(log),
+      is_correct: normalizeIsCorrect(log),
+      submitted_at: log.submitted_at ?? log.submittedAt ?? null,
+    })),
+  };
+}
+
+function buildAttemptHistoryFromResult(result) {
+  const testAttempts = sortTestAttempts(getTestAttempts(result));
+  if (testAttempts.length > 0) {
+    return testAttempts.map(normalizeAttemptHistoryRecord);
+  }
+
+  return groupFlatLogsIntoSessions(getAttemptLogs(result)).map(normalizeAttemptHistoryRecord);
+}
+
+/**
+ * attempt_history 테이블 조회 — results/details 폴백 없음
+ * attempt_number 오름차순, 각 회차 records는 독립 스냅샷
+ */
+export function getAttemptHistory(result) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const stored = ensureArray(synced.attempt_history);
+
+  if (stored.length > 0) {
+    return sortTestAttempts(stored.map(normalizeAttemptHistoryRecord));
+  }
+
+  return buildAttemptHistoryFromResult(synced);
+}
+
+/** attempt_number + question_id로 user_answer 1:1 조회 (다른 회차 폴백 없음) */
+export function getUserAnswerAtAttempt(result, attemptNumber, questionId) {
+  if (questionId == null) return null;
+
+  const session = getAttemptHistory(result).find(
+    (item) => Number(item.attempt_number) === Number(attemptNumber)
+  );
+  if (!session) return null;
+
+  const record = session.records.find(
+    (item) =>
+      item.question_id === questionId || String(item.question_id) === String(questionId)
+  );
+
+  return record?.user_answer ?? null;
+}
+
+/** 시험/재시험 회차만 (관리자 상세용) */
+export function getExamAttemptHistory(result) {
+  return getAttemptHistory(result).filter(
+    (item) => item.attempt_type !== ATTEMPT_TYPES.CLINIC
+  );
+}
+
+export function syncAttemptHistoryOnResult(result) {
+  const attempt_history = buildAttemptHistoryFromResult(result);
+  return {
+    ...result,
+    attempt_history,
+  };
 }
 
 /**
@@ -273,12 +370,12 @@ export function getFirstAttemptWrongAnswer(result, questionId) {
   const logs = getWrongAttemptLogsForQuestion(result, questionId).filter(
     (log) => Number(log.attemptNumber) === 1 && log.attemptType === ATTEMPT_TYPES.EXAM
   );
-  if (logs.length > 0) return logs[0].userAnswer;
+  if (logs.length > 0) return readRawUserAnswerFromLog(logs[0]);
 
   const fallbackFirst = getWrongAttemptLogsForQuestion(result, questionId).find(
-    (log) => Number(log.attemptNumber) === 1
+    (log) => Number(log.attemptNumber ?? log.attempt_number) === 1
   );
-  return fallbackFirst?.userAnswer ?? null;
+  return fallbackFirst ? readRawUserAnswerFromLog(fallbackFirst) : null;
 }
 
 /** @deprecated lastSubmission 폴백 제거 — attempt_logs 오답 중 마지막 시점 */
@@ -295,10 +392,14 @@ export function buildWrongAnswerHistoryForDetail(result, questionId) {
 function backfillLegacyAttemptLogs(result) {
   const existing = getAttemptLogs(result);
   if (existing.length > 0) {
+    const test_attempts = getTestAttempts(result);
     return {
       attempt_logs: existing,
       answer_logs: existing,
-      test_attempts: getTestAttempts(result),
+      test_attempts,
+      attempt_history: test_attempts.length
+        ? test_attempts.map(normalizeAttemptHistoryRecord)
+        : buildAttemptHistoryFromResult({ ...result, attempt_logs: existing }),
     };
   }
 
@@ -345,10 +446,12 @@ function backfillLegacyAttemptLogs(result) {
   });
 
   const sorted = sortAttemptLogs(attempt_logs);
+  const rebuiltAttempts = [buildTestAttemptRecord({ ...result, details: result?.details }, attemptType)];
   return {
     attempt_logs: sorted,
     answer_logs: sorted,
-    test_attempts,
+    test_attempts: rebuiltAttempts,
+    attempt_history: rebuiltAttempts.map(normalizeAttemptHistoryRecord),
   };
 }
 
@@ -362,17 +465,19 @@ export function appendTestAttemptToResult(previousResult, nextResult, attemptTyp
     ...previousLogs,
     ...ensureArray(attemptRecord.attempt_logs),
   ]);
+  const attempt_history = test_attempts.map(normalizeAttemptHistoryRecord);
 
   return {
     ...nextResult,
     test_attempts,
     attempt_logs,
     answer_logs: attempt_logs,
+    attempt_history,
   };
 }
 
 export function syncWrongAnswerHistoryOnResult(result) {
-  const { attempt_logs, test_attempts } = backfillLegacyAttemptLogs(result);
+  const { attempt_logs, test_attempts, attempt_history } = backfillLegacyAttemptLogs(result);
 
   const details = ensureArray(result?.details).map((detail) => {
     const wrongAnswerHistory = buildWrongAnswerHistoryForDetail(
@@ -392,6 +497,7 @@ export function syncWrongAnswerHistoryOnResult(result) {
     attempt_logs,
     answer_logs: attempt_logs,
     test_attempts: test_attempts.length ? test_attempts : getTestAttempts(result),
+    attempt_history: attempt_history ?? buildAttemptHistoryFromResult({ ...result, attempt_logs, test_attempts }),
   };
 }
 

@@ -2,8 +2,9 @@ import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { formatStoredUserAnswer } from "./examRetestStorage";
 import {
-  getResultAttemptSessions,
-  isAttemptLogCorrect,
+  formatAttemptColumnLabel,
+  getExamAttemptHistory,
+  getUserAnswerAtAttempt,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
@@ -33,110 +34,166 @@ function buildQuestionMetaMap(result) {
   return { synced, questions, metaByQuestionId };
 }
 
-function buildSessionRowFromLog(log, metaByQuestionId, questions) {
-  const meta = metaByQuestionId.get(String(log.questionId));
-  const question =
-    meta?.question ?? resolveQuestionForDetail(questions, { questionId: log.questionId, num: log.num });
-  const prompt =
-    meta?.prompt ??
-    (String(question?.prompt ?? "").trim() || "(문항 정보 없음)");
-  const correctAnswer = meta?.correctAnswer ?? (question ? formatQuestionAnswer(question) : "—");
-  const rawUserAnswer = log.userAnswer ?? log.studentAnswer ?? log.userResponse ?? "";
-
+function buildAnswerCellFromHistory(rawUserAnswer, isCorrect, question) {
   return {
-    num: log.num ?? meta?.num ?? null,
-    questionId: log.questionId,
-    prompt,
-    correctAnswer,
     userAnswer: formatStoredUserAnswer(question, rawUserAnswer),
-    rawUserAnswer,
-    isCorrect: isAttemptLogCorrect(log),
-    submittedAt: log.submittedAt,
-    attemptLogId: log.attempt_id ?? null,
+    rawUserAnswer: rawUserAnswer ?? "",
+    isCorrect: isCorrect ?? null,
   };
 }
 
 /**
- * attempt_logs 테이블 기준 응시 단계별 상세 행
- * results.details / 최종 제출본은 사용하지 않음
+ * attempt_history 테이블 기준 — 문항 × 응시회차 매트릭스
+ * results.details / 최종 제출본 미사용
  */
-export function buildSessionBasedDetailView(result) {
+export function buildAttemptWiseDetailView(result) {
   if (!result) {
-    return { sessions: [], summary: null };
+    return { columns: [], rows: [], attemptHistory: [] };
   }
 
   const { synced, questions, metaByQuestionId } = buildQuestionMetaMap(result);
-  const sessions = getResultAttemptSessions(synced);
+  const attemptHistory = getExamAttemptHistory(synced);
 
-  const sessionViews = sessions.map((session) => {
-    const rows = session.logs
-      .map((log) => buildSessionRowFromLog(log, metaByQuestionId, questions))
-      .sort((a, b) => Number(a.num ?? 0) - Number(b.num ?? 0));
+  const columns = attemptHistory.map((session) => ({
+    attemptNumber: session.attempt_number,
+    attemptId: session.attempt_id,
+    columnLabel: formatAttemptColumnLabel(session, attemptHistory),
+    submittedAt: session.submitted_at,
+    score: session.score,
+    total: session.total,
+  }));
 
-    const correctCount = rows.filter((row) => row.isCorrect === true).length;
-
-    return {
-      attemptId: session.attempt_id,
-      label: session.label,
-      attemptNumber: session.attemptNumber,
-      attemptType: session.attemptType,
-      submittedAt: session.submittedAt,
-      score: session.score ?? correctCount,
-      total: session.total ?? rows.length,
-      rows,
-    };
+  const questionIdSet = new Set(metaByQuestionId.keys());
+  attemptHistory.forEach((session) => {
+    session.records.forEach((record) => {
+      if (record.question_id != null) {
+        questionIdSet.add(String(record.question_id));
+      }
+    });
   });
 
-  const percent =
-    synced.total > 0 ? Math.round((Number(synced.score) / Number(synced.total)) * 100) : 0;
+  const rows = [...questionIdSet]
+    .map((questionKey) => {
+      const meta = metaByQuestionId.get(questionKey);
+      const question =
+        meta?.question ??
+        resolveQuestionForDetail(questions, { questionId: questionKey, num: meta?.num });
+
+      const answersByAttempt = {};
+      attemptHistory.forEach((session) => {
+        const record = session.records.find(
+          (item) => String(item.question_id) === questionKey
+        );
+        if (!record) return;
+
+        answersByAttempt[session.attempt_number] = buildAnswerCellFromHistory(
+          record.user_answer,
+          record.is_correct,
+          question
+        );
+      });
+
+      const firstAttemptRaw = getUserAnswerAtAttempt(synced, 1, questionKey);
+
+      return {
+        num: meta?.num ?? attemptHistory[0]?.records.find((r) => String(r.question_id) === questionKey)?.num,
+        questionId: meta?.questionId ?? questionKey,
+        prompt:
+          meta?.prompt ??
+          (String(question?.prompt ?? "").trim() || "(문항 정보 없음)"),
+        correctAnswer: meta?.correctAnswer ?? (question ? formatQuestionAnswer(question) : "—"),
+        answersByAttempt,
+        firstAttemptAnswer: buildAnswerCellFromHistory(firstAttemptRaw, null, question),
+      };
+    })
+    .sort((a, b) => Number(a.num ?? 0) - Number(b.num ?? 0));
 
   return {
-    sessions: sessionViews,
+    columns,
+    rows,
+    attemptHistory,
+  };
+}
+
+export function hasAttemptWiseHistory(result) {
+  const { columns } = buildAttemptWiseDetailView(result);
+  return columns.length > 1;
+}
+
+/** @deprecated buildAttemptWiseDetailView 사용 */
+export function buildSessionBasedDetailView(result) {
+  const { columns, rows, attemptHistory } = buildAttemptWiseDetailView(result);
+
+  const sessions = columns.map((column) => ({
+    attemptId: column.attemptId,
+    label: column.columnLabel.replace(" 답안", ""),
+    attemptNumber: column.attemptNumber,
+    submittedAt: column.submittedAt,
+    score: column.score,
+    total: column.total,
+    rows: rows.map((row) => {
+      const answer = row.answersByAttempt[column.attemptNumber];
+      return {
+        num: row.num,
+        questionId: row.questionId,
+        prompt: row.prompt,
+        correctAnswer: row.correctAnswer,
+        userAnswer: answer?.userAnswer ?? "—",
+        rawUserAnswer: answer?.rawUserAnswer ?? "",
+        isCorrect: answer?.isCorrect ?? null,
+      };
+    }),
+  }));
+
+  return {
+    sessions,
     summary: {
-      score: synced.score,
-      total: synced.total,
-      percent,
-      attemptCount: Number(synced.attemptCount ?? sessionViews.length) || 1,
-      submittedAt: synced.submittedAt,
+      attemptCount: columns.length || 1,
+      attemptScores: columns.map((column) => ({
+        attemptNumber: column.attemptNumber,
+        label: column.columnLabel,
+        score: column.score,
+        total: column.total,
+        submittedAt: column.submittedAt,
+      })),
     },
+    attemptHistory,
   };
 }
 
 export function hasSessionBasedHistory(result) {
-  const { sessions } = buildSessionBasedDetailView(result);
-  return sessions.length > 1;
+  return hasAttemptWiseHistory(result);
 }
 
-/** @deprecated buildSessionBasedDetailView 사용 */
+/** @deprecated buildAttemptWiseDetailView 사용 */
 export function buildResultDetailRows(result) {
-  const { sessions } = buildSessionBasedDetailView(result);
-  const lastSession = sessions[sessions.length - 1];
-  if (!lastSession) return [];
+  const { rows, columns } = buildAttemptWiseDetailView(result);
+  if (rows.length === 0) return [];
 
-  return lastSession.rows.map((row) => ({
+  return rows.map((row) => ({
     num: row.num,
     questionId: row.questionId,
     prompt: row.prompt,
     correctAnswer: row.correctAnswer,
-    correct: row.isCorrect === true,
-    latestStudentAnswer: row.userAnswer,
-    wrongAttemptDisplays: sessions
-      .flatMap((session) =>
-        session.rows
-          .filter((item) => item.questionId === row.questionId && item.isCorrect === false)
-          .map((item) => ({
-            attemptId: session.attemptId,
-            label: session.label,
-            userAnswer: item.userAnswer,
-          }))
-      ),
-    hasWrongHistory: sessions.some((session) =>
-      session.rows.some((item) => item.questionId === row.questionId && item.isCorrect === false)
+    correct: row.answersByAttempt[columns[columns.length - 1]?.attemptNumber]?.isCorrect === true,
+    wrongAttemptDisplays: columns
+      .map((column) => {
+        const answer = row.answersByAttempt[column.attemptNumber];
+        if (!answer || answer.isCorrect !== false) return null;
+        return {
+          attemptId: column.attemptId,
+          label: column.columnLabel,
+          userAnswer: answer.userAnswer,
+        };
+      })
+      .filter(Boolean),
+    hasWrongHistory: columns.some(
+      (column) => row.answersByAttempt[column.attemptNumber]?.isCorrect === false
     ),
-    wrongAnswerDisplay: "—",
+    wrongAnswerDisplay: row.firstAttemptAnswer?.userAnswer ?? "—",
   }));
 }
 
 export function hasMultiAttemptHistory(result) {
-  return hasSessionBasedHistory(result);
+  return hasAttemptWiseHistory(result);
 }

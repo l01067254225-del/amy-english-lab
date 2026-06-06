@@ -157,6 +157,7 @@ export function mergeExamRetestResult(previousResult, newRecord) {
     test_attempts: combined.test_attempts,
     attempt_logs: combined.attempt_logs,
     answer_logs: combined.answer_logs,
+    attempt_history: combined.attempt_history,
   });
 }
 
