@@ -60,9 +60,6 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
               {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항
             </p>
           </div>
-          <button type="button" onClick={onClose} style={closeBtnStyle}>
-            닫기
-          </button>
         </div>
 
         {submitted && scoreSummary && (
@@ -86,6 +83,9 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         </div>
 
         <div style={footerActionsStyle}>
+          <button type="button" onClick={onClose} style={closeBtnStyle}>
+            닫기
+          </button>
           {!submitted ? (
             <button type="button" onClick={handleSubmit} style={primaryBtnStyle}>
               제출
@@ -160,7 +160,9 @@ const questionListStyle = {
 
 const footerActionsStyle = {
   display: "flex",
-  justifyContent: "flex-end",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
   marginTop: 16,
 };
 
@@ -172,6 +174,7 @@ const primaryBtnStyle = {
   color: "white",
   fontWeight: 800,
   cursor: "pointer",
+  marginLeft: "auto",
 };
 
 const secondaryBtnStyle = {
@@ -179,4 +182,5 @@ const secondaryBtnStyle = {
   background: "white",
   color: "#334155",
   border: "1px solid #cbd5e1",
+  marginLeft: "auto",
 };

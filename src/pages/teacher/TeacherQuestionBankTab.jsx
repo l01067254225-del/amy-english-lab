@@ -3,14 +3,13 @@ import {
   SUBJECT_OPTIONS,
   addQuestion,
   addQuestionsBulk,
-  createMaterialSetId,
   createPassageId,
   formatQuestionAnswer,
   getSubjectLabel,
   getSubjectMeta,
   loadQuestionBank,
   removeQuestion,
-  removeQuestionsByMaterialSet,
+  removeQuestionsBySetId,
   removeReadingPassageGroup,
 } from "../../utils/questionBankStorage";
 import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
@@ -30,10 +29,11 @@ import {
   removeVocaSet,
 } from "../../utils/vocaSetStorage";
 import {
-  buildMaterialCatalog,
-  getMaterialNamePlaceholder,
-  suggestMaterialSetName,
-} from "../../utils/materialSetStorage";
+  buildSetCatalog,
+  createSetId,
+  getSetNamePlaceholder,
+  suggestSetName,
+} from "../../utils/examSetStorage";
 import {
   getWritingPasteExample,
   getWritingPasteHint,
@@ -41,10 +41,7 @@ import {
 } from "../../utils/parseWritingText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
-import {
-  buildQuestionDisplayList,
-  truncatePassage,
-} from "../../utils/readingPassage";
+import { truncatePassage } from "../../utils/readingPassage";
 
 export default function TeacherQuestionBankTab() {
   const fileInputRef = useRef(null);
@@ -72,45 +69,12 @@ export default function TeacherQuestionBankTab() {
   const isReading = subject === "reading";
   const isWriting = subject === "writing";
 
-  const filteredQuestions = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return questions.filter((q) => {
-      if (filterSubject !== "all" && q.subject !== filterSubject) return false;
-      if (!query) return true;
-      const haystack = [
-        q.prompt,
-        q.answer,
-        q.passage,
-        q.materialSetName,
-        q.materialName,
-        q.givenWords,
-        getSubjectLabel(q.subject),
-        ...(q.options ?? []),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [questions, searchQuery, filterSubject]);
-
-  const standaloneQuestions = useMemo(() => {
-    if (filterSubject === "vocab") return [];
-    return filteredQuestions.filter(
-      (question) => !(question.materialId ?? question.materialSetId)
-    );
-  }, [filteredQuestions, filterSubject]);
-
-  const displayList = useMemo(
-    () => buildQuestionDisplayList(standaloneQuestions),
-    [standaloneQuestions]
-  );
-
-  const materialCatalog = useMemo(
+  const setCatalog = useMemo(
     () =>
-      buildMaterialCatalog({
+      buildSetCatalog({
         questions,
         vocaSets,
-        subject: filterSubject,
+        subject: filterSubject === "all" ? "" : filterSubject,
         query: searchQuery,
       }),
     [questions, vocaSets, filterSubject, searchQuery]
@@ -231,11 +195,11 @@ export default function TeacherQuestionBankTab() {
     if (!confirm(`"${label}" 자료를 삭제할까요?`)) return;
 
     if (entry.kind === "voca") {
-      setVocaSets(removeVocaSet(entry.id));
+      setVocaSets(removeVocaSet(entry.setId ?? entry.id));
       return;
     }
 
-    setQuestions(removeQuestionsByMaterialSet(entry.id));
+    setQuestions(removeQuestionsBySetId(entry.setId ?? entry.id));
   };
 
   const processCsvFile = async (file) => {
@@ -256,9 +220,11 @@ export default function TeacherQuestionBankTab() {
         return;
       }
 
-      const next = addQuestionsBulk(items);
+      const setId = createSetId();
+      const setName = suggestSetName(items[0]?.subject ?? "grammar", items[0]?.level ?? "");
+      const next = addQuestionsBulk(items, { setId, setName });
       setQuestions(next);
-      alert(`성공적으로 ${items.length}개의 문항이 등록되었습니다.`);
+      alert(`시험 자료 "${setName}" — ${items.length}개 문항이 세트로 등록되었습니다.`);
     } catch {
       alert("CSV 파일을 읽는 중 오류가 발생했습니다.");
     } finally {
@@ -298,7 +264,7 @@ export default function TeacherQuestionBankTab() {
           return;
         }
 
-        const setName = materialSetName.trim() || suggestMaterialSetName("vocab", questionLevel);
+        const setName = materialSetName.trim() || suggestSetName("vocab", questionLevel);
         const words = entries.map((entry) => ({
           word: entry.word,
           mean: entry.meaning,
@@ -333,15 +299,15 @@ export default function TeacherQuestionBankTab() {
           return;
         }
 
-        const resolvedMaterialName =
-          materialSetName.trim() || suggestMaterialSetName("writing", questionLevel);
-        const materialSetId = createMaterialSetId();
+        const resolvedSetName =
+          materialSetName.trim() || suggestSetName("writing", questionLevel);
+        const setId = createSetId();
 
         const next = addQuestionsBulk(
           entries.map((item) => ({ ...item, level: questionLevel })),
           {
-            materialSetId,
-            materialSetName: resolvedMaterialName,
+            setId,
+            setName: resolvedSetName,
           }
         );
         setQuestions(next);
@@ -354,7 +320,7 @@ export default function TeacherQuestionBankTab() {
             : "";
 
         alert(
-          `시험 자료 "${resolvedMaterialName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
+          `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
         );
         return;
       }
@@ -369,15 +335,15 @@ export default function TeacherQuestionBankTab() {
         return;
       }
 
-      const resolvedMaterialName =
-        materialSetName.trim() || suggestMaterialSetName(pasteSubject, questionLevel);
-      const materialSetId = createMaterialSetId();
+      const resolvedSetName =
+        materialSetName.trim() || suggestSetName(pasteSubject, questionLevel);
+      const setId = createSetId();
 
       const next = addQuestionsBulk(
         items.map((item) => ({ ...item, level: questionLevel })),
         {
-          materialSetId,
-          materialSetName: resolvedMaterialName,
+          setId,
+          setName: resolvedSetName,
         }
       );
       setQuestions(next);
@@ -390,7 +356,7 @@ export default function TeacherQuestionBankTab() {
           : "";
 
       alert(
-        `시험 자료 "${resolvedMaterialName}" — 총 ${items.length}개 문항이 등록되었습니다.${errorNote}`
+        `시험 자료 "${resolvedSetName}" — 총 ${items.length}개 문항이 등록되었습니다.${errorNote}`
       );
     } finally {
       setPasteAnalyzing(false);
@@ -700,7 +666,7 @@ export default function TeacherQuestionBankTab() {
             type="text"
             value={materialSetName}
             onChange={(e) => setMaterialSetName(e.target.value)}
-            placeholder={getMaterialNamePlaceholder(pasteSubject, questionLevel)}
+            placeholder={getSetNamePlaceholder(pasteSubject, questionLevel)}
             style={selectStyle}
           />
         </label>
@@ -743,12 +709,7 @@ export default function TeacherQuestionBankTab() {
           <div>
             <h2 style={panelTitleStyle}>문제은행 목록</h2>
             <p style={panelDescStyle}>
-              총 {questions.length}건 · 시험 자료 {materialCatalog.length}개 · 표시{" "}
-              {filterSubject === "all"
-                ? `${materialCatalog.length}자료 · ${filteredQuestions.length}문항`
-                : filterSubject === "vocab"
-                  ? `${materialCatalog.length}자료`
-                  : `${materialCatalog.length}자료 · ${filteredQuestions.filter((q) => !q.materialSetId).length}개별`}
+              총 {questions.length}문항 · Voca {vocaSets.length}세트 · 표시 세트 {setCatalog.length}개
             </p>
           </div>
           <input
@@ -778,55 +739,39 @@ export default function TeacherQuestionBankTab() {
           ))}
         </div>
 
-        {materialCatalog.length > 0 && (
+        {setCatalog.length > 0 ? (
           <div style={{ marginBottom: 20 }}>
-            <h3 style={vocaSetSectionTitleStyle}>시험 자료 목록 ({materialCatalog.length})</h3>
+            <h3 style={vocaSetSectionTitleStyle}>시험 자료 세트 ({setCatalog.length})</h3>
             <div style={cardListStyle}>
-              {materialCatalog.map((entry) => (
-                <MaterialSetCard key={`${entry.kind}-${entry.id}`} entry={entry} onDelete={handleDeleteMaterial} />
+              {setCatalog.map((entry) => (
+                <MaterialSetCard
+                  key={`${entry.kind}-${entry.setId}`}
+                  entry={entry}
+                  onDelete={handleDeleteMaterial}
+                  onDeleteQuestion={handleDelete}
+                />
               ))}
             </div>
           </div>
-        )}
-
-        {filteredQuestions.length === 0 && materialCatalog.length === 0 ? (
+        ) : (
           <div style={emptyStateStyle}>
             <p style={{ margin: 0, fontWeight: 700, color: "#334155" }}>
               {questions.length === 0 && vocaSets.length === 0
-                ? "등록된 문제가 없습니다."
+                ? "등록된 시험 자료가 없습니다."
                 : "검색 결과가 없습니다."}
             </p>
             <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 14 }}>
-              위에서 문제를 추가하거나 CSV·텍스트 붙여넣기로 등록해 보세요.
+              위에서 시험 자료명을 입력하고 CSV·텍스트 붙여넣기로 세트를 등록해 보세요.
             </p>
           </div>
-        ) : displayList.length > 0 ? (
-          <div style={cardListStyle}>
-            {displayList.map((item) =>
-              item.type === "readingGroup" ? (
-                <ReadingPassageGroupCard
-                  key={item.passageId}
-                  passage={item.passage}
-                  questions={item.questions}
-                  onDeleteQuestion={handleDelete}
-                  onDeleteGroup={handleDeleteGroup}
-                />
-              ) : (
-                <QuestionCard
-                  key={item.question.id}
-                  question={item.question}
-                  onDelete={handleDelete}
-                />
-              )
-            )}
-          </div>
-        ) : null}
+        )}
       </section>
     </div>
   );
 }
 
-function MaterialSetCard({ entry, onDelete }) {
+function MaterialSetCard({ entry, onDelete, onDeleteQuestion }) {
+  const [expanded, setExpanded] = useState(false);
   const subjectMeta = getSubjectMeta(entry.subject);
   const countLabel = entry.kind === "voca" ? `단어 ${entry.count}개` : `문항 ${entry.count}개`;
 
@@ -851,13 +796,19 @@ function MaterialSetCard({ entry, onDelete }) {
           </span>
           <span style={readingCountBadgeStyle}>{countLabel}</span>
           {entry.level ? <span style={levelBadgeStyle}>{entry.level}</span> : null}
+          {entry.isAutoSet ? <span style={autoSetChipStyle}>자동 생성</span> : null}
         </div>
-        <button type="button" onClick={() => onDelete(entry)} style={deleteBtnStyle}>
-          삭제
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={() => setExpanded((prev) => !prev)} style={expandBtnStyle}>
+            {expanded ? "접기" : "문항 보기"}
+          </button>
+          <button type="button" onClick={() => onDelete(entry)} style={deleteBtnStyle}>
+            삭제
+          </button>
+        </div>
       </div>
 
-      <h3 style={vocaSetNameStyle}>{entry.name}</h3>
+      <h3 style={vocaSetNameStyle}>{entry.setName ?? entry.name}</h3>
       <p style={vocaSetMetaStyle}>
         {entry.createdAt
           ? `${new Date(entry.createdAt).toLocaleDateString("ko-KR")} 등록`
@@ -866,6 +817,43 @@ function MaterialSetCard({ entry, onDelete }) {
 
       {entry.preview ? (
         <p style={{ margin: 0, color: "#475569", lineHeight: 1.7, fontSize: 14 }}>{entry.preview}</p>
+      ) : null}
+
+      {expanded ? (
+        <div style={setItemsPanelStyle}>
+          {entry.kind === "voca" ? (
+            <ul style={setItemsListStyle}>
+              {(entry.words ?? []).map((word, index) => (
+                <li key={`${word.word}-${index}`}>
+                  {word.word} — {word.mean}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul style={setItemsListStyle}>
+              {(entry.questions ?? []).map((question) => (
+                <li key={question.id} style={setQuestionItemStyle}>
+                  <div style={{ flex: 1 }}>
+                    {question.subject === "reading" && question.passage ? (
+                      <p style={setPassagePreviewStyle}>{truncatePassage(question.passage, 120)}</p>
+                    ) : null}
+                    <strong style={{ color: "#334155" }}>{question.prompt}</strong>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
+                      정답: {formatQuestionAnswer(question)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteQuestion(question.id)}
+                    style={inlineDeleteBtnStyle}
+                  >
+                    삭제
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : null}
     </article>
   );
@@ -1366,6 +1354,68 @@ const deleteBtnStyle = {
   cursor: "pointer",
   fontWeight: 700,
   fontSize: 12,
+  flexShrink: 0,
+};
+
+const expandBtnStyle = {
+  padding: "6px 12px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "white",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 12,
+  flexShrink: 0,
+};
+
+const autoSetChipStyle = {
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#92400e",
+  background: "#fef3c7",
+  borderRadius: 999,
+  padding: "3px 8px",
+};
+
+const setItemsPanelStyle = {
+  marginTop: 14,
+  padding: "12px 14px",
+  borderRadius: 12,
+  background: "white",
+  border: "1px solid #e2e8f0",
+};
+
+const setItemsListStyle = {
+  margin: 0,
+  paddingLeft: 18,
+  color: "#475569",
+  lineHeight: 1.7,
+};
+
+const setQuestionItemStyle = {
+  display: "flex",
+  gap: 12,
+  alignItems: "flex-start",
+  marginBottom: 10,
+};
+
+const setPassagePreviewStyle = {
+  margin: "0 0 6px",
+  fontSize: 12,
+  color: "#64748b",
+  lineHeight: 1.6,
+};
+
+const inlineDeleteBtnStyle = {
+  padding: "4px 8px",
+  borderRadius: 6,
+  border: "1px solid #fecaca",
+  background: "white",
+  color: "#dc2626",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 11,
   flexShrink: 0,
 };
 

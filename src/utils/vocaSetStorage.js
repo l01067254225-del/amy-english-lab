@@ -28,14 +28,17 @@ function normalizeWordEntry(entry) {
 }
 
 export function normalizeVocaSet(set) {
+  const setId = set.setId || createVocaSetId();
+  const setName = String(set.setName ?? "").trim() || "이름 없는 Voca 세트";
   return {
-    setId: set.setId || createVocaSetId(),
-    setName: String(set.setName ?? "").trim() || "이름 없는 Voca 세트",
+    setId,
+    setName,
     level: String(set.level ?? "").trim(),
     words: ensureArray(set.words)
       .map(normalizeWordEntry)
       .filter((entry) => entry.word && entry.mean),
     createdAt: set.createdAt || new Date().toISOString(),
+    isAutoSet: Boolean(set.isAutoSet),
   };
 }
 
@@ -43,10 +46,10 @@ export function loadVocaSets() {
   return ensureArray(readJson()).map(normalizeVocaSet);
 }
 
-import { suggestMaterialSetName } from "./materialSetStorage";
+import { suggestSetName } from "./examSetStorage";
 
 export function suggestVocaSetName(level = "") {
-  return suggestMaterialSetName("vocab", level);
+  return suggestSetName("vocab", level);
 }
 
 export function addVocaSet({ setName, level, words }) {

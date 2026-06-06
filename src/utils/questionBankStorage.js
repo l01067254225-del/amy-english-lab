@@ -2,6 +2,20 @@ import { getTodayDateString } from "./levels";
 import { MAX_MCQ_OPTIONS } from "./mcqOptions";
 import { createPassageId } from "./readingPassage";
 import { ensureArray } from "./safeData";
+import {
+  applySetFieldsToQuestion,
+  createSetId,
+  ensureQuestionSetFields,
+  findOrCreateAutoSet,
+  getQuestionSetId,
+  getQuestionSetName,
+  getSetMigrationVersion,
+  markSetMigrationComplete,
+  migrateQuestionSets,
+  MISC_SET_NAME,
+  SET_MIGRATION_VERSION,
+  suggestSetName,
+} from "./examSetStorage";
 import { normalizeWritingFields } from "./writingQuestion";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
@@ -49,10 +63,10 @@ export function createQuestionId() {
 }
 
 export function createMaterialSetId() {
-  return `mat_${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return createSetId();
 }
 
-export { createPassageId };
+export { createPassageId, createSetId };
 
 function applyReadingFields(item, subject, passage, passageId) {
   if (subject !== "reading") return item;
@@ -78,22 +92,11 @@ export function normalizeQuestion(question) {
       ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())
       : [];
 
-  const materialSetId =
-    String(question.materialId ?? question.materialSetId ?? "").trim() || undefined;
-  const materialSetName =
-    String(
-      question.materialName ?? question.materialSetName ?? question.setName ?? ""
-    ).trim() || undefined;
-
   let base = {
     ...question,
     type,
     options,
     level: String(question.level ?? "").trim(),
-    materialSetId,
-    materialSetName,
-    materialId: materialSetId,
-    materialName: materialSetName,
   };
 
   if (type === "writing") {
@@ -101,19 +104,34 @@ export function normalizeQuestion(question) {
   }
 
   if (question.subject === "reading") {
-    return {
+    return ensureQuestionSetFields({
       ...base,
       passage: String(question.passage ?? "").trim(),
       passageId: question.passageId || undefined,
-    };
+    });
   }
 
   const { passage: _p, passageId: _pid, ...rest } = base;
-  return rest;
+  return ensureQuestionSetFields(rest);
+}
+
+function runQuestionBankMigration(rawQuestions) {
+  const { questions, changed } = migrateQuestionSets(rawQuestions);
+  const shouldPersist =
+    changed || getSetMigrationVersion() < SET_MIGRATION_VERSION;
+
+  if (shouldPersist) {
+    writeJson(QUESTION_BANK_KEY, questions);
+    markSetMigrationComplete();
+  }
+
+  return questions;
 }
 
 export function loadQuestionBank() {
-  return ensureArray(readJson(QUESTION_BANK_KEY)).map(normalizeQuestion);
+  const raw = ensureArray(readJson(QUESTION_BANK_KEY));
+  const migrated = runQuestionBankMigration(raw);
+  return migrated.map(normalizeQuestion);
 }
 
 export function addQuestion({
@@ -126,22 +144,46 @@ export function addQuestion({
   passageId = null,
   level = "",
   givenWords = "",
+  setId = "",
+  setName = "",
+  materialSetId = "",
+  materialSetName = "",
 }) {
+  const existing = loadQuestionBank();
   const normalizedType =
     subject === "writing" ? "writing" : type === "objective" ? "objective" : "subjective";
-  let item = {
-    id: createQuestionId(),
-    type: normalizedType,
-    subject,
-    prompt: prompt.trim(),
-    answer: String(answer).trim(),
-    options:
-      normalizedType === "objective"
-        ? options.map((option) => String(option).trim())
-        : [],
-    level: String(level ?? "").trim(),
-    createdAt: new Date().toISOString(),
-  };
+
+  let resolvedSetId = String(setId || materialSetId || "").trim();
+  let resolvedSetName = String(setName || materialSetName || "").trim();
+  let isAutoSet = false;
+
+  if (!resolvedSetId || !resolvedSetName) {
+    if (resolvedSetName && !resolvedSetId) {
+      resolvedSetId = createSetId();
+    } else {
+      const autoSet = findOrCreateAutoSet(subject, level, existing);
+      resolvedSetId = autoSet.setId;
+      resolvedSetName = autoSet.setName;
+      isAutoSet = true;
+    }
+  }
+
+  let item = applySetFieldsToQuestion(
+    {
+      id: createQuestionId(),
+      type: normalizedType,
+      subject,
+      prompt: prompt.trim(),
+      answer: String(answer).trim(),
+      options:
+        normalizedType === "objective"
+          ? options.map((option) => String(option).trim())
+          : [],
+      level: String(level ?? "").trim(),
+      createdAt: new Date().toISOString(),
+    },
+    { setId: resolvedSetId, setName: resolvedSetName, isAutoSet }
+  );
 
   if (normalizedType === "writing") {
     item = normalizeWritingFields({
@@ -151,43 +193,51 @@ export function addQuestion({
   }
 
   item = applyReadingFields(item, subject, passage, passageId);
+  item = normalizeQuestion(item);
 
-  const next = [item, ...loadQuestionBank()];
+  const next = [item, ...existing];
   writeJson(QUESTION_BANK_KEY, next);
   return next;
 }
 
-export function addQuestionsBulk(items, { materialSetId = "", materialSetName = "" } = {}) {
+export function addQuestionsBulk(
+  items,
+  { setId = "", setName = "", materialSetId = "", materialSetName = "" } = {}
+) {
   const baseTime = Date.now();
-  const sharedMaterialSetId = String(materialSetId ?? "").trim() || undefined;
-  const sharedMaterialSetName = String(materialSetName ?? "").trim() || undefined;
+  const existing = loadQuestionBank();
+  const sharedSetId =
+    String(setId || materialSetId || "").trim() || createSetId();
+  const sharedSetName =
+    String(setName || materialSetName || "").trim() ||
+    suggestSetName(items[0]?.subject, items[0]?.level);
 
   const newItems = items.map((item, index) => {
     const type = resolveQuestionType(item);
-    const resolvedMaterialSetId =
-      String(item.materialId ?? item.materialSetId ?? sharedMaterialSetId ?? "").trim() ||
-      undefined;
-    const resolvedMaterialSetName =
-      String(item.materialName ?? item.materialSetName ?? sharedMaterialSetName ?? "").trim() ||
-      undefined;
+    const resolvedSetId =
+      String(item.setId ?? item.materialId ?? item.materialSetId ?? sharedSetId).trim() ||
+      sharedSetId;
+    const resolvedSetName =
+      String(
+        item.setName ?? item.materialName ?? item.materialSetName ?? sharedSetName
+      ).trim() || sharedSetName;
 
-    let question = {
-      id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
-      type,
-      subject: item.subject,
-      prompt: String(item.prompt).trim(),
-      answer: String(item.answer).trim(),
-      options:
-        type === "objective" && Array.isArray(item.options)
-          ? item.options.map((option) => String(option).trim())
-          : [],
-      level: String(item.level ?? "").trim(),
-      materialSetId: resolvedMaterialSetId,
-      materialSetName: resolvedMaterialSetName,
-      materialId: resolvedMaterialSetId,
-      materialName: resolvedMaterialSetName,
-      createdAt: new Date().toISOString(),
-    };
+    let question = applySetFieldsToQuestion(
+      {
+        id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
+        type,
+        subject: item.subject,
+        prompt: String(item.prompt).trim(),
+        answer: String(item.answer).trim(),
+        options:
+          type === "objective" && Array.isArray(item.options)
+            ? item.options.map((option) => String(option).trim())
+            : [],
+        level: String(item.level ?? "").trim(),
+        createdAt: new Date().toISOString(),
+      },
+      { setId: resolvedSetId, setName: resolvedSetName, isAutoSet: false }
+    );
 
     if (type === "writing") {
       question = normalizeWritingFields({
@@ -204,7 +254,8 @@ export function addQuestionsBulk(items, { materialSetId = "", materialSetName = 
     );
     return normalizeQuestion(question);
   });
-  const next = [...newItems, ...loadQuestionBank()];
+
+  const next = [...newItems, ...existing];
   writeJson(QUESTION_BANK_KEY, next);
   return next;
 }
@@ -221,14 +272,15 @@ export function removeReadingPassageGroup(passageId) {
   return next;
 }
 
-export function removeQuestionsByMaterialSet(materialSetId) {
-  const targetId = String(materialSetId ?? "").trim();
-  const next = loadQuestionBank().filter((q) => {
-    const id = String(q.materialId ?? q.materialSetId ?? "").trim();
-    return id !== targetId;
-  });
+export function removeQuestionsBySetId(setId) {
+  const targetId = String(setId ?? "").trim();
+  const next = loadQuestionBank().filter((q) => getQuestionSetId(q) !== targetId);
   writeJson(QUESTION_BANK_KEY, next);
   return next;
+}
+
+export function removeQuestionsByMaterialSet(materialSetId) {
+  return removeQuestionsBySetId(materialSetId);
 }
 
 export function formatQuestionAnswer(question) {
@@ -248,7 +300,15 @@ export function loadExamSets() {
   return ensureArray(readJson(EXAM_SETS_KEY));
 }
 
-export function addExamSet({ title, questions, targetLevel, testDate, vocaSource = null, materialSource = null }) {
+export function addExamSet({
+  title,
+  questions,
+  targetLevel,
+  testDate,
+  vocaSource = null,
+  materialSource = null,
+  setSource = null,
+}) {
   const item = {
     id: `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: title.trim(),
@@ -259,6 +319,7 @@ export function addExamSet({ title, questions, targetLevel, testDate, vocaSource
     createdAt: new Date().toISOString(),
     ...(vocaSource ? { vocaSource } : {}),
     ...(materialSource ? { materialSource } : {}),
+    ...(setSource ? { setSource } : {}),
   };
   const next = [item, ...loadExamSets()];
   writeJson(EXAM_SETS_KEY, next);
