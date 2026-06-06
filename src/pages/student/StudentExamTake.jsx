@@ -3,6 +3,7 @@ import QuestionCard from "../../components/QuestionCard";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
 import { fetchAllResults, replaceResult, saveResult } from "../../services/resultsApi";
+import { isExamStartBlocked } from "../../utils/studentExamStatus";
 import {
   buildExamTakeView,
   shouldShowReadingPassage,
@@ -64,6 +65,31 @@ export default function StudentExamTake({
   });
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [startBlocked, setStartBlocked] = useState(false);
+
+  useEffect(() => {
+    if (isRetest) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const all = await fetchAllResults();
+        if (cancelled) return;
+        if (isExamStartBlocked(examId, all, studentKey)) {
+          setStartBlocked(true);
+          clearExamDraft(studentKey, examId);
+          onBack?.();
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [examId, studentKey, isRetest, onBack]);
 
   useEffect(() => {
     if (submitted) return;
@@ -158,7 +184,7 @@ export default function StudentExamTake({
     }
   };
 
-  if (!exam) {
+  if (!exam || startBlocked) {
     return (
       <div style={pageStyle}>
         <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -166,7 +192,11 @@ export default function StudentExamTake({
           <button type="button" onClick={onBack} style={backBtnStyle}>
             ← 대시보드로 돌아가기
           </button>
-          <p style={{ color: "#64748b" }}>시험 정보를 찾을 수 없습니다.</p>
+          <p style={{ color: "#64748b" }}>
+            {startBlocked
+              ? "이미 완료한 시험입니다."
+              : "시험 정보를 찾을 수 없습니다."}
+          </p>
         </div>
       </div>
     );

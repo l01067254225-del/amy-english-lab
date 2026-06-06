@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { fetchAllResults } from "../services/resultsApi";
 import { getStudentSession, clearStudentSession } from "../utils/studentAuth";
 import {
   clearStudentGateState,
   loadStudentGateState,
   saveStudentGateState,
 } from "../utils/studentGateStorage";
+import { isExamStartBlocked } from "../utils/studentExamStatus";
 import StudentDashboard from "./student/StudentDashboard";
 import StudentExamTake from "./student/StudentExamTake";
 import StudentTestResult from "./student/StudentTestResult";
@@ -129,7 +131,11 @@ export default function StudentGate({ onBack }) {
     <StudentDashboard
       student={session}
       onLogout={handleLogout}
-      onStartExam={(examId) => {
+      onStartExam={async (examId) => {
+        const all = await fetchAllResults();
+        if (isExamStartBlocked(examId, all, session.id)) {
+          return;
+        }
         setRetestResultId(null);
         setActiveExamId(examId);
         setView("exam");

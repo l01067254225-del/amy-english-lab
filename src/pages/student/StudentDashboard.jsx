@@ -6,6 +6,7 @@ import { getStudentLevel } from "../../utils/levelStats";
 import { formatTestDate, formatLevelLabel, getTodayDateString } from "../../utils/levels";
 import { getAvailableExamsForStudent } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
+import { getStudentExamStatus } from "../../utils/studentExamStatus";
 
 export default function StudentDashboard({
   student,
@@ -65,6 +66,20 @@ export default function StudentDashboard({
     }
   };
 
+  const examStatusById = useMemo(() => {
+    const map = new Map();
+    availableExams.forEach((exam) => {
+      map.set(exam.id, getStudentExamStatus(exam.id, savedResults, studentKey));
+    });
+    return map;
+  }, [availableExams, savedResults, studentKey]);
+
+  const handleStartExam = (examId) => {
+    const status = examStatusById.get(examId);
+    if (status?.complete) return;
+    onStartExam?.(examId);
+  };
+
   const greeting = studentLevel
     ? `안녕하세요, ${studentName} 학생 (레벨: ${formatLevelLabel(studentLevel)})`
     : `안녕하세요, ${studentName} 학생`;
@@ -92,26 +107,41 @@ export default function StudentDashboard({
             </div>
           ) : (
             <div style={activeListStyle}>
-              {availableExams.map((exam) => (
-                <article key={exam.id} style={activeCardStyle}>
-                  <div style={activeCardBodyStyle}>
-                    <h3 style={examTitleStyle}>{exam.title}</h3>
-                    <div style={examMetaRowStyle}>
-                      <span style={metaPillStyle}>{getExamSubjectSummary(exam)}</span>
-                      <span style={metaTextStyle}>
-                        {getExamQuestionCount(exam)}문항
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onStartExam(exam.id)}
-                    style={startBtnStyle}
+              {availableExams.map((exam) => {
+                const status = examStatusById.get(exam.id);
+                const isComplete = Boolean(status?.complete);
+
+                return (
+                  <article
+                    key={exam.id}
+                    style={{
+                      ...activeCardStyle,
+                      ...(isComplete ? activeCardCompleteStyle : {}),
+                    }}
                   >
-                    시험 시작하기
-                  </button>
-                </article>
-              ))}
+                    <div style={activeCardBodyStyle}>
+                      <h3 style={examTitleStyle}>{exam.title}</h3>
+                      <div style={examMetaRowStyle}>
+                        <span style={metaPillStyle}>{getExamSubjectSummary(exam)}</span>
+                        <span style={metaTextStyle}>
+                          {getExamQuestionCount(exam)}문항
+                        </span>
+                        {isComplete && (
+                          <span style={completeBadgeStyle}>학습 완료</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleStartExam(exam.id)}
+                      disabled={isComplete}
+                      style={isComplete ? completedBtnStyle : startBtnStyle}
+                    >
+                      {isComplete ? "완료됨" : "시험 시작하기"}
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -306,6 +336,30 @@ const startBtnStyle = {
   cursor: "pointer",
   whiteSpace: "nowrap",
   boxShadow: "0 4px 14px rgba(37, 99, 235, 0.35)",
+};
+
+const completedBtnStyle = {
+  ...startBtnStyle,
+  background: "#e2e8f0",
+  color: "#64748b",
+  boxShadow: "none",
+  cursor: "not-allowed",
+  opacity: 0.95,
+};
+
+const activeCardCompleteStyle = {
+  borderColor: "#e2e8f0",
+  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.04)",
+  background: "#f8fafc",
+};
+
+const completeBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#ecfdf5",
+  color: "#047857",
+  fontSize: 12,
+  fontWeight: 700,
 };
 
 const historyCardStyle = {
