@@ -68,7 +68,7 @@ export function createMaterialSetId() {
 
 export { createPassageId, createSetId };
 
-function applyReadingFields(item, subject, passage, passageId) {
+function applyReadingFields(item, subject, passage, passageId, passageNumber = null) {
   if (subject !== "reading") return item;
   const passageText = String(passage ?? "").trim();
   return {
@@ -76,6 +76,7 @@ function applyReadingFields(item, subject, passage, passageId) {
     passage: passageText,
     readingPassage: passageText,
     passageId: passageId || createPassageId(),
+    ...(passageNumber != null ? { passageNumber } : {}),
   };
 }
 
@@ -108,11 +109,16 @@ export function normalizeQuestion(question) {
     const passageText = String(
       question.readingPassage ?? question.passage ?? ""
     ).trim();
+    const passageNumber =
+      question.passageNumber != null && question.passageNumber !== ""
+        ? Number(question.passageNumber)
+        : undefined;
     return ensureQuestionSetFields({
       ...base,
       passage: passageText,
       readingPassage: passageText,
       passageId: question.passageId || undefined,
+      ...(Number.isFinite(passageNumber) ? { passageNumber } : {}),
     });
   }
 
@@ -255,7 +261,8 @@ export function addQuestionsBulk(
       question,
       item.subject,
       item.readingPassage ?? item.passage,
-      item.passageId
+      item.passageId,
+      item.passageNumber ?? null
     );
     return normalizeQuestion(question);
   });

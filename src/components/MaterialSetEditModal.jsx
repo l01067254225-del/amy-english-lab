@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import ReadingPassagePreview from "./ReadingPassagePreview";
 import { getSubjectLabel } from "../utils/questionBankStorage";
-import { extractReadingPassage, getTextPasteHint } from "../utils/parseQuestionText";
+import { formatPassagesPreviewText, getTextPasteHint } from "../utils/parseQuestionText";
 import { getVocabPasteHint } from "../utils/parseVocabText";
 import { getWritingPasteHint } from "../utils/parseWritingText";
 import { parseSetEditContent, serializeSetContent } from "../utils/setEditFormat";
@@ -22,7 +22,7 @@ export default function MaterialSetEditModal({ entry, onClose, onSave, saving = 
 
   const passagePreview = useMemo(() => {
     if (entry?.subject !== "reading" || !contentText.trim()) return "";
-    return extractReadingPassage(contentText).readingPassage;
+    return formatPassagesPreviewText(contentText);
   }, [entry?.subject, contentText]);
 
   const handleSave = () => {

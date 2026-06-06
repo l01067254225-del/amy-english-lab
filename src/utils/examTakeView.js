@@ -1,29 +1,30 @@
+import { getQuestionPassageText } from "./readingPassage";
+
 export function buildExamTakeView(questions) {
   if (!questions?.length) {
     return { mode: "default", questions: [], passage: "" };
   }
 
   const readingQuestions = questions.filter((q) => q.subject === "reading");
-  if (readingQuestions.length === questions.length) {
-    const passageId = readingQuestions[0].passageId || readingQuestions[0].id;
-    const group = readingQuestions.filter(
-      (q) => (q.passageId || q.id) === passageId
-    );
-    const passage = group[0]?.passage?.trim() || "";
+  const allReading = readingQuestions.length === questions.length;
+  const hasPassageText = readingQuestions.some((q) => getQuestionPassageText(q));
 
-    if (group.length === questions.length && passage) {
-      return { mode: "reading", questions: group, passage };
-    }
+  if (allReading && hasPassageText) {
+    return {
+      mode: "reading",
+      questions,
+      passage: getQuestionPassageText(readingQuestions[0]),
+    };
   }
 
   return { mode: "default", questions, passage: "" };
 }
 
 export function shouldShowReadingPassage(question, questions, index) {
-  if (question.subject !== "reading" || !question.passage?.trim()) return false;
+  if (question.subject !== "reading" || !getQuestionPassageText(question)) return false;
   const passageKey = question.passageId || question.id;
   const firstIndex = questions.findIndex(
-    (q) => (q.passageId || q.id) === passageKey && q.passage?.trim()
+    (q) => (q.passageId || q.id) === passageKey && getQuestionPassageText(q)
   );
   return firstIndex === index;
 }

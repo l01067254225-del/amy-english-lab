@@ -20,7 +20,7 @@ import {
   parseQuestionText,
   getTextPasteExample,
   getTextPasteHint,
-  extractReadingPassage,
+  formatPassagesPreviewText,
 } from "../../utils/parseQuestionText";
 import {
   getVocabPasteExample,
@@ -88,7 +88,7 @@ export default function TeacherQuestionBankTab() {
 
   const pastePassagePreview = useMemo(() => {
     if (pasteSubject !== "reading" || !pasteText.trim()) return "";
-    return extractReadingPassage(pasteText).readingPassage;
+    return formatPassagesPreviewText(pasteText);
   }, [pasteSubject, pasteText]);
 
   const handleSubjectChange = (nextSubject) => {
@@ -969,8 +969,9 @@ function FilterChip({ active, label, onClick, color = "#475569", bg = "#f1f5f9" 
   );
 }
 
-function ReadingPassageGroupCard({ passage, questions, onDeleteQuestion, onDeleteGroup }) {
+function ReadingPassageGroupCard({ passage, passageNumber, questions, onDeleteQuestion, onDeleteGroup }) {
   const subjectMeta = getSubjectMeta("reading");
+  const groupLabel = passageNumber ? `지문 ${passageNumber}` : "Reading · 지문 세트";
 
   return (
     <article
@@ -989,7 +990,7 @@ function ReadingPassageGroupCard({ passage, questions, onDeleteQuestion, onDelet
               background: subjectMeta.bg,
             }}
           >
-            Reading · 지문 세트
+            Reading · {groupLabel}
           </span>
           <span style={readingCountBadgeStyle}>문항 {questions.length}개</span>
         </div>

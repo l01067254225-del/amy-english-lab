@@ -9,12 +9,29 @@ export function truncatePassage(text, maxLength = 120) {
   return `${normalized.slice(0, maxLength)}…`;
 }
 
+export function getQuestionPassageText(question) {
+  if (!question) return "";
+  return String(question.readingPassage ?? question.passage ?? "").trim();
+}
+
+export function getPassageNumberLabel(question) {
+  const num = Number(question?.passageNumber);
+  if (Number.isFinite(num) && num > 0) {
+    return `지문 ${num}`;
+  }
+  return "Reading Passage";
+}
+
+export function resolvePassageForQuestion(question) {
+  return getQuestionPassageText(question);
+}
+
 export function buildQuestionDisplayList(questions) {
   const seenPassageIds = new Set();
   const items = [];
 
   questions.forEach((question) => {
-    const passageText = question.readingPassage ?? question.passage;
+    const passageText = getQuestionPassageText(question);
     const isGroupedReading =
       question.subject === "reading" && question.passageId && passageText;
 
@@ -28,6 +45,7 @@ export function buildQuestionDisplayList(questions) {
       items.push({
         type: "readingGroup",
         passageId: question.passageId,
+        passageNumber: question.passageNumber ?? null,
         passage: passageText,
         readingPassage: passageText,
         questions: groupQuestions,

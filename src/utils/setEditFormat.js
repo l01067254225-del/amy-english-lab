@@ -25,6 +25,34 @@ function ensureOptions(options) {
   return Array.isArray(options) ? options.filter(Boolean) : [];
 }
 
+function groupReadingQuestions(questions) {
+  const groups = new Map();
+
+  ensureArray(questions).forEach((question) => {
+    const key = question.passageId || `passage-${question.passageNumber ?? 1}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        passageNumber: question.passageNumber ?? 1,
+        passage: String(question.readingPassage ?? question.passage ?? "").trim(),
+        questions: [],
+      });
+    }
+    groups.get(key).questions.push(question);
+  });
+
+  return [...groups.values()].sort(
+    (a, b) => Number(a.passageNumber) - Number(b.passageNumber)
+  );
+}
+
+function serializeReadingPassageTag(passageNumber) {
+  const num = Number(passageNumber);
+  if (Number.isFinite(num) && num > 0) {
+    return { open: `[지문${num}]`, close: `[/지문${num}]` };
+  }
+  return { open: "[지문]", close: "[/지문]" };
+}
+
 export function serializeSetContent(entry) {
   if (!entry) return "";
 
@@ -42,16 +70,20 @@ export function serializeSetContent(entry) {
   }
 
   if (entry.subject === "reading") {
-    const passage = String(
-      questions[0]?.readingPassage ?? questions[0]?.passage ?? ""
-    ).trim();
-    const blocks = questions.map((question, index) => {
+    const passageGroups = groupReadingQuestions(questions);
+    const passageBlocks = passageGroups.map((group) => {
+      const tag = serializeReadingPassageTag(group.passageNumber);
+      return `${tag.open}\n${group.passage}\n${tag.close}`;
+    });
+
+    const questionBlocks = questions.map((question, index) => {
       if (question.type === "objective" && ensureOptions(question.options).length >= 2) {
         return serializeObjectiveBlock(question, index);
       }
       return serializeSubjectiveBlock(question, index);
     });
-    return `[지문]\n${passage}\n[/지문]\n\n${blocks.join("\n\n")}`;
+
+    return `${passageBlocks.join("\n\n")}\n\n${questionBlocks.join("\n\n")}`;
   }
 
   return questions
@@ -113,13 +145,11 @@ export function parseSetEditContent({ entry, contentText }) {
     };
   }
 
-  const enrichedItems = items.map((item) => {
-    const next = { ...item, subject: item.subject ?? subject, level };
-    if (subject === "reading" && entry?.questions?.[0]?.passageId) {
-      next.passageId = entry.questions[0].passageId;
-    }
-    return next;
-  });
+  const enrichedItems = items.map((item) => ({
+    ...item,
+    subject: item.subject ?? subject,
+    level,
+  }));
 
   return {
     ok: true,

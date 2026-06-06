@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
+import {
+  getPassageNumberLabel,
+  resolvePassageForQuestion,
+} from "../../utils/readingPassage";
 
 export default function StudentReadingTest({
   passage,
@@ -20,9 +24,19 @@ export default function StudentReadingTest({
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === total - 1;
 
+  const activePassage = useMemo(() => {
+    const fromQuestion = resolvePassageForQuestion(currentQuestion);
+    return fromQuestion || passage || "";
+  }, [currentQuestion, passage]);
+
+  const passageTitle = useMemo(
+    () => getPassageNumberLabel(currentQuestion),
+    [currentQuestion]
+  );
+
   useEffect(() => {
     setCurrentIndex(0);
-  }, [passage, questions.length]);
+  }, [questions.length]);
 
   if (!currentQuestion) {
     return (
@@ -36,11 +50,11 @@ export default function StudentReadingTest({
     <div style={splitLayoutStyle}>
       <aside style={passagePanelStyle}>
         <div style={passageHeaderStyle}>
-          <span style={passageLabelStyle}>Reading Passage</span>
+          <span style={passageLabelStyle}>{passageTitle}</span>
           <span style={passageHintStyle}>지문을 읽으며 문제를 풀어 보세요</span>
         </div>
         <div style={passageScrollStyle}>
-          <p style={passageTextStyle}>{passage}</p>
+          <p style={passageTextStyle}>{activePassage}</p>
         </div>
       </aside>
 
