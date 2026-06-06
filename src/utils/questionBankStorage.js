@@ -279,6 +279,19 @@ export function removeQuestionsBySetId(setId) {
   return next;
 }
 
+export function replaceQuestionsForSet(setId, items, { setName = "" } = {}) {
+  const targetId = String(setId ?? "").trim();
+  const resolvedSetName = String(setName ?? "").trim();
+  removeQuestionsBySetId(targetId);
+  if (!ensureArray(items).length) {
+    return loadQuestionBank();
+  }
+  return addQuestionsBulk(items, {
+    setId: targetId,
+    setName: resolvedSetName,
+  });
+}
+
 export function removeQuestionsByMaterialSet(materialSetId) {
   return removeQuestionsBySetId(materialSetId);
 }

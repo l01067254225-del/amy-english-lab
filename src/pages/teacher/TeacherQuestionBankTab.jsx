@@ -10,8 +10,10 @@ import {
   loadQuestionBank,
   removeQuestion,
   removeQuestionsBySetId,
+  replaceQuestionsForSet,
   removeReadingPassageGroup,
 } from "../../utils/questionBankStorage";
+import MaterialSetEditModal from "../../components/MaterialSetEditModal";
 import { parseQuestionCsv, parseQuestionCsvRowPreview } from "../../utils/parseQuestionCsv";
 import {
   parseQuestionText,
@@ -27,6 +29,7 @@ import {
   addVocaSet,
   loadVocaSets,
   removeVocaSet,
+  updateVocaSet,
 } from "../../utils/vocaSetStorage";
 import {
   buildSetCatalog,
@@ -65,6 +68,8 @@ export default function TeacherQuestionBankTab() {
   const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
   const [materialSetName, setMaterialSetName] = useState("");
   const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const isReading = subject === "reading";
   const isWriting = subject === "writing";
@@ -200,6 +205,41 @@ export default function TeacherQuestionBankTab() {
     }
 
     setQuestions(removeQuestionsBySetId(entry.setId ?? entry.id));
+  };
+
+  const handleEditMaterial = (entry) => {
+    setEditingEntry(entry);
+  };
+
+  const handleSaveMaterialEdit = ({ setName, parsed }) => {
+    if (!editingEntry) return;
+
+    setSavingEdit(true);
+    try {
+      if (editingEntry.kind === "voca") {
+        const nextSets = updateVocaSet(editingEntry.setId, {
+          setName,
+          level: editingEntry.level,
+          words: parsed.words,
+        });
+        setVocaSets(nextSets);
+      } else {
+        const nextQuestions = replaceQuestionsForSet(editingEntry.setId, parsed.items, {
+          setName,
+        });
+        setQuestions(nextQuestions);
+      }
+
+      const warning =
+        parsed.errors?.length > 0
+          ? `\n\n건너뛴 항목 ${parsed.errors.length}건:\n${parsed.errors.slice(0, 3).join("\n")}`
+          : "";
+
+      alert(`시험 자료 "${setName}"이(가) 수정되었습니다.${warning}`);
+      setEditingEntry(null);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const processCsvFile = async (file) => {
@@ -747,6 +787,7 @@ export default function TeacherQuestionBankTab() {
                 <MaterialSetCard
                   key={`${entry.kind}-${entry.setId}`}
                   entry={entry}
+                  onEdit={handleEditMaterial}
                   onDelete={handleDeleteMaterial}
                   onDeleteQuestion={handleDelete}
                 />
@@ -766,11 +807,22 @@ export default function TeacherQuestionBankTab() {
           </div>
         )}
       </section>
+
+      {editingEntry ? (
+        <MaterialSetEditModal
+          entry={editingEntry}
+          saving={savingEdit}
+          onClose={() => {
+            if (!savingEdit) setEditingEntry(null);
+          }}
+          onSave={handleSaveMaterialEdit}
+        />
+      ) : null}
     </div>
   );
 }
 
-function MaterialSetCard({ entry, onDelete, onDeleteQuestion }) {
+function MaterialSetCard({ entry, onEdit, onDelete, onDeleteQuestion }) {
   const [expanded, setExpanded] = useState(false);
   const subjectMeta = getSubjectMeta(entry.subject);
   const countLabel = entry.kind === "voca" ? `단어 ${entry.count}개` : `문항 ${entry.count}개`;
@@ -801,6 +853,9 @@ function MaterialSetCard({ entry, onDelete, onDeleteQuestion }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" onClick={() => setExpanded((prev) => !prev)} style={expandBtnStyle}>
             {expanded ? "접기" : "문항 보기"}
+          </button>
+          <button type="button" onClick={() => onEdit(entry)} style={expandBtnStyle}>
+            수정
           </button>
           <button type="button" onClick={() => onDelete(entry)} style={deleteBtnStyle}>
             삭제

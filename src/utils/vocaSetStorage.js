@@ -76,6 +76,21 @@ export function removeVocaSet(setId) {
   return next;
 }
 
+export function updateVocaSet(setId, { setName, level, words }) {
+  const targetId = String(setId ?? "").trim();
+  const next = loadVocaSets().map((set) => {
+    if (set.setId !== targetId) return set;
+    return normalizeVocaSet({
+      ...set,
+      setName: String(setName ?? set.setName).trim() || set.setName,
+      level: String(level ?? set.level ?? "").trim(),
+      words: ensureArray(words),
+    });
+  });
+  writeJson(next);
+  return next;
+}
+
 export function filterVocaSetsByLevel(sets, targetLevel) {
   const list = ensureArray(sets);
   if (!targetLevel) return list;
