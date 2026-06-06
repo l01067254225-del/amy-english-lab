@@ -1,4 +1,6 @@
 export const LEVEL_OPTIONS = [
+  "MA1-1",
+  "MA1-2",
   "A2-1",
   "A2-2",
   "A1-1",
@@ -7,6 +9,8 @@ export const LEVEL_OPTIONS = [
   "PA1-2",
   "HB1-1",
   "HB1-2",
+  "B1-1",
+  "B1-2",
 ];
 
 export function getTodayDateString(date = new Date()) {
