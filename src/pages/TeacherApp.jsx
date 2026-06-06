@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
-import { STUDENTS } from "../data/students";
 import { clearAllResults, fetchAllResults } from "../services/resultsApi";
+import { loadStudents } from "../utils/studentStorage";
 import {
   clearTeacherSession,
   isTeacherAuthed,
@@ -11,10 +11,12 @@ import {
 import TeacherExamBuilderTab from "./teacher/TeacherExamBuilderTab";
 import TeacherQuestionBankTab from "./teacher/TeacherQuestionBankTab";
 import TeacherResultsTab from "./teacher/TeacherResultsTab";
+import TeacherStudentManagementTab from "./teacher/TeacherStudentManagementTab";
 import { btnSecondary } from "./teacher/teacherStyles";
 
 const TABS = [
   { id: "results", label: "성적 조회" },
+  { id: "students", label: "학생 계정 관리" },
   { id: "questionBank", label: "문제은행 관리" },
   { id: "examBuilder", label: "시험 생성" },
 ];
@@ -26,6 +28,7 @@ export default function TeacherApp({ onBack }) {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [results, setResults] = useState([]);
+  const [students, setStudents] = useState(() => loadStudents());
   const [loading, setLoading] = useState(true);
 
   const loadResults = useCallback(async () => {
@@ -77,7 +80,7 @@ export default function TeacherApp({ onBack }) {
   };
 
   const studentSummary = useMemo(() => {
-    return STUDENTS.map((student) => {
+    return students.map((student) => {
       const studentResults = results
         .filter((r) => r.studentId === student.id)
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
@@ -88,7 +91,7 @@ export default function TeacherApp({ onBack }) {
         latest,
       };
     });
-  }, [results]);
+  }, [results, students]);
 
   if (!authed) {
     return (
@@ -145,7 +148,7 @@ export default function TeacherApp({ onBack }) {
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <SiteHeader
           title="교사용 관리자 페이지"
-          subtitle="성적 조회, 문제은행 관리, 시험 생성을 한곳에서 관리합니다"
+          subtitle="성적 조회, 학생 계정, 문제은행, 시험 생성을 한곳에서 관리합니다"
           onLogout={logout}
         />
 
@@ -179,6 +182,9 @@ export default function TeacherApp({ onBack }) {
             onRefresh={loadResults}
             onClearAll={handleClearAll}
           />
+        )}
+        {activeTab === "students" && (
+          <TeacherStudentManagementTab onStudentsChange={setStudents} />
         )}
         {activeTab === "questionBank" && <TeacherQuestionBankTab />}
         {activeTab === "examBuilder" && <TeacherExamBuilderTab />}
