@@ -127,7 +127,7 @@ export default function StudentDashboard({
                           {getExamQuestionCount(exam)}문항
                         </span>
                         {isComplete && (
-                          <span style={completeBadgeStyle}>학습 완료</span>
+                          <span style={completeBadgeStyle}>오답 완료</span>
                         )}
                       </div>
                     </div>
