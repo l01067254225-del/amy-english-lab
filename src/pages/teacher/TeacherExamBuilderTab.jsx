@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   addExamSet,
+  formatQuestionAnswer,
   getSubjectLabel,
   loadExamSets,
   loadQuestionBank,
@@ -148,7 +149,7 @@ export default function TeacherExamBuilderTab() {
                     </td>
                     <td style={thTdStyle}>{getSubjectLabel(q.subject)}</td>
                     <td style={thTdStyle}>{q.prompt}</td>
-                    <td style={thTdStyle}>{q.answer}</td>
+                    <td style={thTdStyle}>{formatQuestionAnswer(q)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -199,7 +200,7 @@ export default function TeacherExamBuilderTab() {
                 <ul style={{ margin: 0, paddingLeft: 20, color: "#475569", lineHeight: 1.7 }}>
                   {exam.questions.map((q) => (
                     <li key={q.id}>
-                      [{getSubjectLabel(q.subject)}] {q.prompt} → {q.answer}
+                      [{getSubjectLabel(q.subject)}] {q.prompt} → {formatQuestionAnswer(q)}
                     </li>
                   ))}
                 </ul>
