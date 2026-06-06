@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchResultById, formatDate } from "../services/resultsApi";
-import {
-  buildAttemptWiseDetailView,
-  hasAttemptWiseHistory,
-} from "../utils/resultDetailView";
+import { buildAttemptWiseDetailView } from "../utils/resultDetailView";
 import { formatLevelLabel } from "../utils/levels";
 
 function ResultMark({ correct }) {
@@ -59,7 +56,6 @@ export default function TeacherResultDetailModal({
   onClose,
   loading: externalLoading = false,
 }) {
-  const [selectedAttempt, setSelectedAttempt] = useState("all");
   const [result, setResult] = useState(initialResult);
   const [fetchState, setFetchState] = useState("idle");
   const [retryCount, setRetryCount] = useState(0);
@@ -93,20 +89,12 @@ export default function TeacherResultDetailModal({
 
   const detailView = useMemo(() => {
     if (!result || isLoading) {
-      return { columns: [], rows: [], attemptHistory: [], isReady: false };
+      return { column: null, rows: [], isReady: false };
     }
     return buildAttemptWiseDetailView(result);
   }, [result, isLoading]);
 
-  const { columns, rows, isReady } = detailView;
-
-  const visibleColumns = useMemo(() => {
-    if (selectedAttempt === "all") return columns;
-    const attemptNumber = Number(selectedAttempt);
-    return columns.filter((column) => column.attemptNumber === attemptNumber);
-  }, [columns, selectedAttempt]);
-
-  const hasMultipleAttempts = hasAttemptWiseHistory(result);
+  const { column, rows, isReady } = detailView;
 
   if (!initialResult) return null;
 
@@ -132,44 +120,29 @@ export default function TeacherResultDetailModal({
           {isLoading ? (
             <span style={summaryChipStyle}>데이터 로딩 중...</span>
           ) : (
-            columns.map((column) => (
-              <span key={column.attemptId ?? column.attemptNumber} style={summaryChipStyle}>
+            column && (
+              <span style={summaryChipStyle}>
                 {column.columnLabel}: {column.score ?? "?"}/{column.total ?? "?"}점
                 {column.submittedAt ? ` · ${formatDate(column.submittedAt)}` : ""}
               </span>
-            ))
+            )
           )}
-          <span style={dataSourceChipStyle}>attempt_logs + answers join</span>
+          <span style={dataSourceChipStyle}>attempt_number = 1</span>
           {fetchState === "error" && (
-            <button type="button" onClick={() => setRetryCount((count) => count + 1)} style={retryBtnStyle}>
+            <button
+              type="button"
+              onClick={() => setRetryCount((count) => count + 1)}
+              style={retryBtnStyle}
+            >
               DB 재조회
             </button>
           )}
         </div>
 
-        <div style={toolbarStyle}>
-          <label style={filterLabelStyle}>
-            응시 회차 보기
-            <select
-              value={selectedAttempt}
-              onChange={(event) => setSelectedAttempt(event.target.value)}
-              style={selectStyle}
-              disabled={isLoading}
-            >
-              <option value="all">전체 회차 (나란히 비교)</option>
-              {columns.map((column) => (
-                <option key={column.attemptNumber} value={String(column.attemptNumber)}>
-                  {column.columnLabel}만 보기
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
         <p style={historyHintStyle}>
-          Q1~Q10 답안은 <strong>attempt_number=1</strong> attempt_logs를 우선 조회하고, 없으면 다음
-          회차를 순회합니다. 응시 데이터(answers)와 채점 데이터(details)를 questionId/num 기준으로
-          join합니다.
+          <strong>1차 시험 답안</strong>만 표시합니다. attempt_logs · answers join 시{" "}
+          <code>attempt_number = 1</code> 조건을 최우선 적용하며, 정오답과 무관하게 제출
+          user_answer를 그대로 출력합니다.
         </p>
 
         {isLoading ? (
@@ -177,7 +150,11 @@ export default function TeacherResultDetailModal({
         ) : rows.length === 0 ? (
           <div style={{ marginTop: 16 }}>
             <p style={{ margin: "0 0 8px", color: "#64748b" }}>답안 기록 없음</p>
-            <button type="button" onClick={() => setRetryCount((count) => count + 1)} style={retryBtnStyle}>
+            <button
+              type="button"
+              onClick={() => setRetryCount((count) => count + 1)}
+              style={retryBtnStyle}
+            >
               DB 재조회
             </button>
           </div>
@@ -188,62 +165,46 @@ export default function TeacherResultDetailModal({
                 <tr>
                   <th style={thStyle}>문제 번호</th>
                   <th style={thStyle}>문제 내용</th>
-                  {visibleColumns.map((column) => (
-                    <th key={column.attemptNumber} style={thStyle}>
-                      {column.columnLabel}
-                    </th>
-                  ))}
+                  <th style={thStyle}>{column?.columnLabel ?? "1차 시험 답안"}</th>
                   <th style={thStyle}>정답</th>
+                  <th style={{ ...thStyle, textAlign: "center", width: 80 }}>정오답</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const hasWrongInVisible = visibleColumns.some(
-                    (column) => row.answersByAttempt[column.attemptNumber]?.isCorrect === false
-                  );
+                  const answer = row.firstExamAnswer ?? { status: "missing" };
+                  const isWrong = answer.isCorrect === false;
 
                   return (
-                    <tr
-                      key={`${row.questionId ?? "q"}-${row.num}`}
-                      style={hasWrongInVisible ? wrongRowStyle : null}
-                    >
+                    <tr key={`${row.questionId ?? "q"}-${row.num}`} style={isWrong ? wrongRowStyle : null}>
                       <td style={tdStyle}>
                         <strong>Q{row.num ?? "—"}</strong>
                       </td>
                       <td style={tdStyle}>{row.prompt}</td>
-                      {visibleColumns.map((column) => {
-                        const answer = row.answersByAttempt[column.attemptNumber] ?? {
-                          status: "missing",
-                        };
-
-                        return (
-                          <td key={column.attemptNumber} style={tdStyle}>
-                            <div style={answerStackStyle}>
-                              <AnswerCell
-                                answer={answer}
-                                variant={
-                                  answer.isCorrect === false
-                                    ? "wrong"
-                                    : answer.isCorrect === true
-                                      ? "correct"
-                                      : "neutral"
-                                }
-                              />
-                              {answer.fallbackFrom && (
-                                <span style={fallbackTagStyle}>
-                                  {answer.fallbackFrom}회차에서 조회
-                                </span>
-                              )}
-                              <ResultMark correct={answer.isCorrect} />
-                            </div>
-                          </td>
-                        );
-                      })}
                       <td style={tdStyle}>
                         <AnswerCell
-                          answer={{ status: "found", userAnswer: row.correctAnswer, isEmptyString: false }}
+                          answer={answer}
+                          variant={
+                            answer.isCorrect === false
+                              ? "wrong"
+                              : answer.isCorrect === true
+                                ? "correct"
+                                : "neutral"
+                          }
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <AnswerCell
+                          answer={{
+                            status: "found",
+                            userAnswer: row.correctAnswer,
+                            isEmptyString: false,
+                          }}
                           variant="correct"
                         />
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "center" }}>
+                        <ResultMark correct={answer.isCorrect} />
                       </td>
                     </tr>
                   );
@@ -255,15 +216,7 @@ export default function TeacherResultDetailModal({
 
         {!isLoading && !isReady && rows.length > 0 && (
           <p style={legendStyle}>
-            attempt_logs에 답안이 없어 answers/details join을 시도했습니다. 여전히 비어 있다면
-            「DB 재조회」를 눌러주세요.
-          </p>
-        )}
-
-        {hasMultipleAttempts && selectedAttempt === "all" && isReady && (
-          <p style={legendStyle}>
-            각 회차 답안은 attempt_number별 독립 레코드입니다. 1차 답안이 없으면 다음 회차에서
-            자동 조회됩니다.
+            attempt_number=1 로그가 없습니다. 「DB 재조회」를 눌러 다시 불러와 주세요.
           </p>
         )}
       </div>
@@ -283,7 +236,7 @@ const overlayStyle = {
 };
 
 const modalStyle = {
-  width: "min(1180px, 100%)",
+  width: "min(960px, 100%)",
   maxHeight: "92vh",
   overflow: "auto",
   background: "white",
@@ -347,30 +300,6 @@ const dataSourceChipStyle = {
   color: "#1d4ed8",
 };
 
-const toolbarStyle = {
-  marginBottom: 12,
-};
-
-const filterLabelStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#334155",
-};
-
-const selectStyle = {
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #cbd5e1",
-  background: "white",
-  fontSize: 14,
-  fontWeight: 600,
-  color: "#0f172a",
-  minWidth: 240,
-};
-
 const historyHintStyle = {
   margin: "0 0 16px",
   padding: "10px 12px",
@@ -418,28 +347,11 @@ const markStyle = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: 24,
-  height: 24,
+  width: 28,
+  height: 28,
   borderRadius: 999,
   fontWeight: 800,
-  fontSize: 12,
-  flexShrink: 0,
-};
-
-const answerStackStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const fallbackTagStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#64748b",
-  background: "#f1f5f9",
-  padding: "2px 6px",
-  borderRadius: 999,
+  fontSize: 14,
 };
 
 const answerNeutralStyle = {

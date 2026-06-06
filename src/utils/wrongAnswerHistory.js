@@ -173,24 +173,19 @@ export function formatAttemptLabel(log) {
   });
 }
 
-/** 관리자 상세 — [1차 답안], [재시 1차 답안] 등 컬럼 라벨 */
-export function formatAttemptColumnLabel(attemptRecord, allAttempts = []) {
-  const attemptType = attemptRecord?.attempt_type ?? attemptRecord?.attemptType ?? ATTEMPT_TYPES.EXAM;
+export const FIRST_ATTEMPT_NUMBER = 1;
+export const FIRST_EXAM_ANSWER_COLUMN_LABEL = "1차 시험 답안";
+
+/** 관리자 상세 — 1차 시험 컬럼 라벨 */
+export function formatAttemptColumnLabel(attemptRecord) {
   const attemptNumber = Number(attemptRecord?.attempt_number ?? attemptRecord?.attemptNumber ?? 1);
-
+  if (attemptNumber === FIRST_ATTEMPT_NUMBER) {
+    return FIRST_EXAM_ANSWER_COLUMN_LABEL;
+  }
+  const attemptType = attemptRecord?.attempt_type ?? attemptRecord?.attemptType ?? ATTEMPT_TYPES.EXAM;
   if (attemptType === ATTEMPT_TYPES.CLINIC) {
-    const clinicIndex = ensureArray(allAttempts).filter(
-      (item) =>
-        (item?.attempt_type ?? item?.attemptType) === ATTEMPT_TYPES.CLINIC &&
-        Number(item?.attempt_number ?? item?.attemptNumber ?? 0) <= attemptNumber
-    ).length;
-    return clinicIndex > 0 ? `오답 노트 (${clinicIndex}회)` : "오답 노트";
+    return "오답 노트";
   }
-
-  if (attemptNumber === 1) {
-    return "1차 답안";
-  }
-
   return `재시 ${attemptNumber - 1}차 답안`;
 }
 
@@ -293,10 +288,94 @@ function readSubmissionFromAnswersMap(result, questionId) {
 }
 
 /**
+ * attempt_number = 1 전용 — 재시험 등 다른 회차는 조회하지 않음
+ * is_correct 무관, user_answer 그대로 반환
+ */
+export function resolveFirstExamAnswer(result, { questionId, num } = {}) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const detail = findDetailForQuestion(synced, { questionId, num });
+  const gradingCorrect = detail?.correct === true ? true : detail?.correct === false ? false : null;
+
+  const found = (user_answer, is_correct, source) => ({
+    status: "found",
+    user_answer: preserveRawSubmittedAnswer(user_answer),
+    is_correct: is_correct ?? gradingCorrect,
+    source,
+    attemptNumber: FIRST_ATTEMPT_NUMBER,
+  });
+
+  const flatLog = findAttemptLogForQuestion(
+    getAttemptLogsForNumber(synced, FIRST_ATTEMPT_NUMBER),
+    { questionId, num }
+  );
+  if (flatLog) {
+    return found(readRawUserAnswerFromLog(flatLog), normalizeIsCorrect(flatLog), "attempt_logs");
+  }
+
+  const testAttempt = sortTestAttempts(getTestAttempts(synced)).find(
+    (item) => Number(item.attempt_number ?? item.attemptNumber) === FIRST_ATTEMPT_NUMBER
+  );
+  if (testAttempt) {
+    const log = findAttemptLogForQuestion(getSessionAttemptLogs(testAttempt), { questionId, num });
+    if (log) {
+      return found(readRawUserAnswerFromLog(log), normalizeIsCorrect(log), "test_attempts");
+    }
+  }
+
+  const historySession = buildAttemptHistoryFromResult(synced).find(
+    (item) => Number(item.attempt_number) === FIRST_ATTEMPT_NUMBER
+  );
+  if (historySession) {
+    const record = findAttemptLogForQuestion(historySession.records, { questionId, num });
+    if (record) {
+      return found(record.user_answer, record.is_correct, "attempt_history");
+    }
+  }
+
+  if (detail?.examRetest?.previousUserAnswer != null) {
+    return found(detail.examRetest.previousUserAnswer, false, "exam_retest_join");
+  }
+
+  if (Number(synced.attemptCount ?? 1) === FIRST_ATTEMPT_NUMBER) {
+    const fromMap = readSubmissionFromAnswersMap(synced, questionId);
+    if (isUserAnswerPresent(fromMap)) {
+      return found(fromMap, gradingCorrect, "answers_join");
+    }
+
+    const fromDetail =
+      detail?.userAnswer ?? detail?.studentAnswer ?? detail?.userResponse ?? null;
+    if (isUserAnswerPresent(fromDetail)) {
+      return found(fromDetail, gradingCorrect, "details_join");
+    }
+  }
+
+  return {
+    status: "missing",
+    user_answer: null,
+    is_correct: gradingCorrect,
+    source: null,
+    attemptNumber: FIRST_ATTEMPT_NUMBER,
+  };
+}
+
+export function getFirstAttemptSession(result) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  return (
+    buildAttemptHistoryFromResult(synced).find(
+      (item) => Number(item.attempt_number) === FIRST_ATTEMPT_NUMBER
+    ) ?? null
+  );
+}
+
+/**
  * attempt_logs(응시) + details(채점) join — questionId/num 기준
  * @returns {{ status: 'found'|'missing', user_answer: string|null, is_correct: boolean|null, source: string|null, attemptNumber: number, fallbackFrom?: number }}
  */
 export function resolveJoinedAttemptAnswer(result, attemptNumber, { questionId, num } = {}) {
+  if (Number(attemptNumber) === FIRST_ATTEMPT_NUMBER) {
+    return resolveFirstExamAnswer(result, { questionId, num });
+  }
+
   const synced = syncWrongAnswerHistoryOnResult(result);
   const normalizedAttempt = Number(attemptNumber) || 1;
 
@@ -401,45 +480,9 @@ export function resolveJoinedAttemptAnswer(result, attemptNumber, { questionId, 
   };
 }
 
-/** attempt_number=1 우선, 없으면 다음 회차 순회 */
-export function resolveJoinedAttemptAnswerWithFallback(result, { questionId, num, startAttemptNumber = 1 } = {}) {
-  const synced = syncWrongAnswerHistoryOnResult(result);
-  const attemptNumbers = [
-    ...new Set(
-      getExamAttemptHistory(synced)
-        .map((item) => Number(item.attempt_number))
-        .filter((value) => Number.isFinite(value) && value > 0)
-        .sort((a, b) => a - b)
-    ),
-  ];
-
-  if (attemptNumbers.length === 0) {
-    attemptNumbers.push(Number(startAttemptNumber) || 1);
-  }
-
-  const ordered = [
-    Number(startAttemptNumber) || 1,
-    ...attemptNumbers.filter((value) => value !== (Number(startAttemptNumber) || 1)),
-  ];
-
-  for (const attemptNumber of ordered) {
-    const resolved = resolveJoinedAttemptAnswer(synced, attemptNumber, { questionId, num });
-    if (resolved.status === "found") {
-      return {
-        ...resolved,
-        fallbackFrom: attemptNumber !== (Number(startAttemptNumber) || 1) ? attemptNumber : null,
-      };
-    }
-  }
-
-  return {
-    status: "missing",
-    user_answer: null,
-    is_correct: null,
-    source: null,
-    attemptNumber: Number(startAttemptNumber) || 1,
-    fallbackFrom: null,
-  };
+/** @deprecated resolveFirstExamAnswer 사용 (attempt_number=1만) */
+export function resolveJoinedAttemptAnswerWithFallback(result, { questionId, num } = {}) {
+  return resolveFirstExamAnswer(result, { questionId, num });
 }
 
 /** attempt_history 테이블 레코드 정규화 (test_attempts → attempt_history) */
@@ -483,9 +526,10 @@ export function getAttemptHistory(result) {
   return buildAttemptHistoryFromResult(synced);
 }
 
-/** attempt_number + question_id/num으로 user_answer 1:1 조회 */
+/** attempt_number=1 user_answer 조회 */
 export function getUserAnswerAtAttempt(result, attemptNumber, questionId, num = null) {
-  const resolved = resolveJoinedAttemptAnswer(result, attemptNumber, { questionId, num });
+  if (Number(attemptNumber) !== FIRST_ATTEMPT_NUMBER) return null;
+  const resolved = resolveFirstExamAnswer(result, { questionId, num });
   return resolved.status === "found" ? resolved.user_answer : null;
 }
 
