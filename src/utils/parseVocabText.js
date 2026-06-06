@@ -1,9 +1,9 @@
 import { shuffleArray } from "./shuffle";
 
-const NUMBER_PREFIX = /^\d+(?:[.)]\s*|\s+)/u;
+const NUMBER_PREFIX = /^\d+[.)]?\s*/u;
 const NUMBER_STUCK_PREFIX = /^\d+(?=[A-Za-z])/u;
+const ENGLISH_WORD_HEAD = /^([A-Za-z][A-Za-z'\-]*)/u;
 const HANGUL = /[\uAC00-\uD7A3]/u;
-const LATIN = /[A-Za-z]/;
 
 function cleanVocabLine(line) {
   return String(line ?? "")
@@ -14,82 +14,68 @@ function cleanVocabLine(line) {
     .trim();
 }
 
-function normalizeWord(word) {
-  return String(word ?? "")
+function normalizeMeaningTail(meaning) {
+  return String(meaning ?? "")
     .trim()
-    .replace(/[:：\-–—]+$/u, "")
+    .replace(/^뜻\s*[:：]\s*/iu, "")
+    .replace(/^[:：\-–—]\s*/u, "")
     .trim();
 }
 
-function normalizeMeaning(meaning) {
-  return String(meaning ?? "").trim();
-}
-
 function isValidPair(word, meaning) {
-  return Boolean(word && meaning && LATIN.test(word) && HANGUL.test(meaning));
+  return Boolean(
+    word &&
+    meaning &&
+    ENGLISH_WORD_HEAD.test(word) &&
+    word.match(ENGLISH_WORD_HEAD)?.[0] === word &&
+    HANGUL.test(meaning)
+  );
 }
 
-function splitAtLatinHangulBoundary(text) {
-  const match = text.match(/^(.+?)([\uAC00-\uD7A3][\s\S]*)$/u);
+function splitByLeadingEnglishWord(text) {
+  const trimmed = String(text ?? "").trim();
+  const match = trimmed.match(/^([A-Za-z][A-Za-z'\-]*)\s*(.*)$/u);
   if (!match) return null;
 
-  const word = normalizeWord(match[1]);
-  const meaning = normalizeMeaning(match[2]);
-  if (!isValidPair(word, meaning) || !/[A-Za-z]$/.test(word)) return null;
-
-  return { word, meaning };
-}
-
-function splitEnglishKoreanBySingleSpace(text) {
-  const match = text.match(/^([A-Za-z][A-Za-z\s'\-]*?)\s+([\uAC00-\uD7A3].*)$/u);
-  if (!match) return null;
-
-  const word = normalizeWord(match[1]);
-  const meaning = normalizeMeaning(match[2]);
+  const word = match[1].trim();
+  const meaning = normalizeMeaningTail(match[2]);
   if (!isValidPair(word, meaning)) return null;
 
   return { word, meaning };
+}
+
+function splitDelimitedParts(parts) {
+  const first = String(parts[0] ?? "").trim();
+  const wordMatch = first.match(ENGLISH_WORD_HEAD);
+  if (!wordMatch) return null;
+
+  const word = wordMatch[0];
+  const inlineTail = normalizeMeaningTail(first.slice(word.length));
+  const joinedTail = normalizeMeaningTail(
+    [inlineTail, ...parts.slice(1)].filter(Boolean).join(" ")
+  );
+
+  if (!isValidPair(word, joinedTail)) return null;
+  return { word, meaning: joinedTail };
 }
 
 export function parseVocabLine(line) {
   const text = cleanVocabLine(line);
   if (!text) return null;
 
-  const meaningLabelMatch = text.match(/^(.+?)\s+뜻\s*[:：]\s*(.+)$/iu);
-  if (meaningLabelMatch) {
-    const word = normalizeWord(meaningLabelMatch[1]);
-    const meaning = normalizeMeaning(meaningLabelMatch[2]);
-    if (isValidPair(word, meaning)) return { word, meaning };
-  }
-
-  const separatorMatch = text.match(/^(.+?)\s*[:：\-–—]\s*(.+)$/u);
-  if (separatorMatch) {
-    const word = normalizeWord(separatorMatch[1]);
-    const meaning = normalizeMeaning(separatorMatch[2]);
-    if (isValidPair(word, meaning)) return { word, meaning };
-  }
-
   const tabParts = text.split(/\t+/).map((part) => part.trim()).filter(Boolean);
   if (tabParts.length >= 2) {
-    const word = normalizeWord(tabParts[0]);
-    const meaning = normalizeMeaning(tabParts.slice(1).join(" "));
-    if (isValidPair(word, meaning)) return { word, meaning };
+    const tabPair = splitDelimitedParts(tabParts);
+    if (tabPair) return tabPair;
   }
 
   const multiSpaceParts = text.split(/\s{2,}/).map((part) => part.trim()).filter(Boolean);
   if (multiSpaceParts.length >= 2) {
-    const word = normalizeWord(multiSpaceParts[0]);
-    const meaning = normalizeMeaning(multiSpaceParts.slice(1).join(" "));
-    if (isValidPair(word, meaning)) return { word, meaning };
+    const spacedPair = splitDelimitedParts(multiSpaceParts);
+    if (spacedPair) return spacedPair;
   }
 
-  const boundaryPair = splitAtLatinHangulBoundary(text);
-  if (boundaryPair) return boundaryPair;
-
-  const spacedPair = splitEnglishKoreanBySingleSpace(text);
-  if (spacedPair) return spacedPair;
-
-  return null;
+  return splitByLeadingEnglishWord(text);
 }
 
 export function parseVocabEntries(text) {
@@ -108,7 +94,7 @@ export function parseVocabEntries(text) {
       errors.push(`${index + 1}번째 줄: 단어/뜻 형식을 인식하지 못했습니다. (${line.slice(0, 40)})`);
       return;
     }
-    entries.push(parsed);
+    entries.push({ word: parsed.word, meaning: parsed.meaning });
   });
 
   return { entries, errors };
@@ -178,13 +164,13 @@ export function parseVocabQuestionText(text, { questionType = "subjective", leve
 
 export function getVocabPasteExample() {
   return `1 boost밀어올리다
-chaos혼돈
+5 decode (암호룰) 해독하다
+decode(암호룰) 해독하다
 dynamic : 역동적인, 활발한
 adaptable - 적응력 있는
-resilient  회복력 있는
-5. curious 뜻: 호기심 많은`;
+52 resilient  (회복) 탄력 있는`;
 }
 
 export function getVocabPasteHint() {
-  return "Voca: 붙여넣은 단어는 하나의 '단어 세트'로 묶여 저장됩니다. 'boost밀어올리다'처럼 붙어 있어도, ': · - · 뜻:' 등 구분 기호가 있어도 자동 분리됩니다.";
+  return "Voca: 맨 앞 영어 단어 뒤의 괄호·한글·기호 전체가 뜻으로 저장됩니다. 예) decode (암호룰) 해독하다 → decode / (암호룰) 해독하다";
 }
