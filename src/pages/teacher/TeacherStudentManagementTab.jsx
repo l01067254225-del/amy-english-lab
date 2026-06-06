@@ -17,6 +17,8 @@ import {
   thTdStyle,
 } from "./teacherStyles";
 
+const LEVEL_OPTIONS = ["A2-1", "A2-2", "A1-1", "A1-2", "PA1-1", "PA1-2", "HB1-2"];
+
 export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const [students, setStudents] = useState(() => loadStudents());
   const [form, setForm] = useState(EMPTY_STUDENT_FORM);
@@ -63,14 +65,14 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
       ["name", "이름"],
       ["school", "학교"],
       ["grade", "학년"],
-      ["level", "학원 레벨"],
+      ["level", "레벨"],
       ["id", "아이디"],
       ["password", "패스워드"],
     ];
 
     for (const [field, label] of required) {
       if (!String(form[field] ?? "").trim()) {
-        return `${label}을(를) 입력해 주세요.`;
+        return field === "level" ? "레벨을 선택해 주세요." : `${label}을(를) 입력해 주세요.`;
       }
     }
     return null;
@@ -149,7 +151,7 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
             <Field label="이름 (Name)" value={form.name} onChange={(v) => handleFieldChange("name", v)} placeholder="예: 홍길동" />
             <Field label="학교 (School)" value={form.school} onChange={(v) => handleFieldChange("school", v)} placeholder="예: Amy Elementary" />
             <Field label="학년 (Grade)" value={form.grade} onChange={(v) => handleFieldChange("grade", v)} placeholder="예: 5학년" />
-            <Field label="학원 레벨 (Level)" value={form.level} onChange={(v) => handleFieldChange("level", v)} placeholder="예: Intermediate" />
+            <LevelSelect value={form.level} onChange={(v) => handleFieldChange("level", v)} />
             <Field label="아이디 (ID)" value={form.id} onChange={(v) => handleFieldChange("id", v)} placeholder="예: amy05" />
             <Field label="패스워드 (Password)" value={form.password} onChange={(v) => handleFieldChange("password", v)} placeholder="예: 1234" />
           </div>
@@ -247,6 +249,39 @@ function Field({ label, value, onChange, placeholder }) {
     </label>
   );
 }
+
+function LevelSelect({ value, onChange }) {
+  const isLegacyLevel = value && !LEVEL_OPTIONS.includes(value);
+
+  return (
+    <label style={compactLabelStyle}>
+      레벨
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={selectStyle}
+      >
+        <option value="">레벨 선택</option>
+        {isLegacyLevel && (
+          <option value={value}>
+            {value} (기존)
+          </option>
+        )}
+        {LEVEL_OPTIONS.map((level) => (
+          <option key={level} value={level}>
+            {level}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const selectStyle = {
+  ...inputStyle,
+  marginTop: 6,
+  cursor: "pointer",
+};
 
 const pageWrapStyle = {
   display: "flex",
