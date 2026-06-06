@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { getStudentSession, clearStudentSession } from "../utils/studentAuth";
-import StudentLogin from "./StudentLogin";
 import StudentApp from "./StudentApp";
 
-export default function StudentGate() {
-  const [session, setSession] = useState(() => getStudentSession());
+export default function StudentGate({ onBack }) {
+  const session = getStudentSession();
+
+  useEffect(() => {
+    if (!session) {
+      onBack?.();
+    }
+  }, [session, onBack]);
 
   const handleLogout = () => {
     clearStudentSession();
-    setSession(null);
+    onBack?.();
   };
 
   if (!session) {
-    return <StudentLogin onLogin={() => setSession(getStudentSession())} />;
+    return null;
   }
 
   return <StudentApp student={session} onLogout={handleLogout} />;

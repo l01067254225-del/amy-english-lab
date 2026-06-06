@@ -1,22 +1,18 @@
 import { useState } from "react";
-import { findStudent } from "../data/students";
-import { setStudentSession } from "../utils/studentAuth";
 
-export default function StudentLogin({ onLogin }) {
+export default function StudentLogin({ onLogin, onBack }) {
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const student = findStudent(id, password);
-    if (!student) {
-      setError("아이디 또는 비밀번호가 틀렸습니다.");
+    const loginError = onLogin(id, password);
+    if (loginError) {
+      setError(loginError);
       return;
     }
-    setStudentSession(student);
     setError("");
-    onLogin();
   };
 
   return (
@@ -78,10 +74,27 @@ export default function StudentLogin({ onLogin }) {
             입장
           </button>
         </form>
+        {onBack && (
+          <button type="button" onClick={onBack} style={backStyle}>
+            이전으로
+          </button>
+        )}
       </div>
     </div>
   );
 }
+
+const backStyle = {
+  marginTop: 12,
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "white",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 700,
+};
 
 const labelStyle = {
   display: "block",

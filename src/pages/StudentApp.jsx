@@ -129,7 +129,6 @@ export default function StudentApp({ student, onLogout }) {
         <SiteHeader
           title="AMY ENGLISH LAB"
           subtitle={`${student.name} (${student.id})`}
-          isTeacher={false}
           onLogout={onLogout}
         />
 

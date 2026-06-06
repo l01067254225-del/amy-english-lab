@@ -1,4 +1,4 @@
-export default function SiteHeader({ title, subtitle, isTeacher, onLogout }) {
+export default function SiteHeader({ title, subtitle, onLogout }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div
@@ -17,7 +17,7 @@ export default function SiteHeader({ title, subtitle, isTeacher, onLogout }) {
           )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {!isTeacher && onLogout && (
+          {onLogout && (
             <button
               type="button"
               onClick={onLogout}
@@ -25,15 +25,6 @@ export default function SiteHeader({ title, subtitle, isTeacher, onLogout }) {
             >
               로그아웃
             </button>
-          )}
-          {isTeacher ? (
-            <a href="#" style={linkStyle}>
-              학생 시험 →
-            </a>
-          ) : (
-            <a href="#teacher" style={linkStyle}>
-              교사용 →
-            </a>
           )}
         </div>
       </div>
