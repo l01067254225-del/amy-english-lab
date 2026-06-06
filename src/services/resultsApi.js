@@ -1,4 +1,5 @@
 import * as localStorageApi from "../utils/resultsStorage";
+import { ensureArray } from "../utils/safeData";
 
 export { formatDate } from "../utils/resultsStorage";
 
@@ -11,7 +12,7 @@ export function getSyncMode() {
 }
 
 export async function fetchAllResults() {
-  return localStorageApi.loadResults();
+  return ensureArray(localStorageApi.loadResults());
 }
 
 export async function saveResult(record) {
@@ -23,11 +24,11 @@ export async function saveResult(record) {
     score: record.score,
     total: record.total,
     submittedAt: record.submittedAt,
-    details: record.details,
+    details: ensureArray(record.details),
     id: record.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   };
   localStorageApi.saveResult(payload);
-  return localStorageApi.loadResults();
+  return ensureArray(localStorageApi.loadResults());
 }
 
 export async function deleteResult(resultId) {

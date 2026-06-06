@@ -3,6 +3,7 @@ import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
 import { formatDate } from "../../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../../utils/examHelpers";
 import { LEVEL_OPTIONS } from "../../utils/levels";
+import { ensureArray } from "../../utils/safeData";
 import {
   btnSecondary,
   inputStyle,
@@ -23,29 +24,36 @@ export default function TeacherResultsTab({
   const [nameQuery, setNameQuery] = useState("");
   const [printTarget, setPrintTarget] = useState(null);
 
+  const safeStudents = ensureArray(students);
+  const safeResults = ensureArray(results);
+
   const studentMap = useMemo(() => {
     const map = new Map();
-    students.forEach((student) => map.set(student.id, student));
+    safeStudents.forEach((student) => {
+      if (student?.id) map.set(student.id, student);
+    });
     return map;
-  }, [students]);
+  }, [safeStudents]);
 
   const registryRows = useMemo(() => {
-    return results
+    return safeResults
       .map((result) => {
+        if (!result) return null;
         const student =
           studentMap.get(result.studentId) ??
-          students.find((item) => item.name === result.studentName);
+          safeStudents.find((item) => item.name === result.studentName);
         return {
           ...result,
           level: student?.level?.trim() || "—",
           subject: getSubjectSummaryForTestId(result.testId),
         };
       })
+      .filter(Boolean)
       .sort(
         (a, b) =>
-          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       );
-  }, [results, studentMap, students]);
+  }, [safeResults, studentMap, safeStudents]);
 
   const filteredRows = useMemo(() => {
     const query = nameQuery.trim().toLowerCase();
@@ -53,8 +61,8 @@ export default function TeacherResultsTab({
       if (levelFilter !== "all" && row.level !== levelFilter) return false;
       if (!query) return true;
       return (
-        row.studentName.toLowerCase().includes(query) ||
-        row.studentId?.toLowerCase().includes(query)
+        String(row.studentName ?? "").toLowerCase().includes(query) ||
+        String(row.studentId ?? "").toLowerCase().includes(query)
       );
     });
   }, [registryRows, levelFilter, nameQuery]);
@@ -125,7 +133,9 @@ export default function TeacherResultsTab({
           {levelFilter !== "all" || nameQuery.trim() ? " (필터 적용됨)" : ""}
         </p>
 
-        {filteredRows.length === 0 ? (
+        {safeResults.length === 0 ? (
+          <p style={{ margin: 0, color: "#64748b" }}>등록된 성적 데이터가 없습니다.</p>
+        ) : filteredRows.length === 0 ? (
           <p style={{ margin: 0, color: "#64748b" }}>조건에 맞는 성적 데이터가 없습니다.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>

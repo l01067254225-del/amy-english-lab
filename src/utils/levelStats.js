@@ -1,8 +1,9 @@
 import { loadResults } from "./resultsStorage";
 import { loadStudents } from "./studentStorage";
+import { ensureArray } from "./safeData";
 
 function getLatestResultsByStudent(testId) {
-  const results = loadResults().filter((result) => result.testId === testId);
+  const results = ensureArray(loadResults()).filter((result) => result?.testId === testId);
   const latestByStudent = new Map();
 
   results.forEach((result) => {
@@ -22,7 +23,7 @@ function getLatestResultsByStudent(testId) {
 }
 
 export function getStudentLevel(studentId) {
-  const student = loadStudents().find((item) => item.id === studentId);
+  const student = ensureArray(loadStudents()).find((item) => item.id === studentId);
   return student?.level?.trim() || null;
 }
 
@@ -32,7 +33,7 @@ export function getLevelTestAverage(testId, level, { excludeStudentId = null } =
   }
 
   const levelStudentIds = new Set(
-    loadStudents()
+    ensureArray(loadStudents())
       .filter((student) => student.level === level)
       .map((student) => student.id)
   );

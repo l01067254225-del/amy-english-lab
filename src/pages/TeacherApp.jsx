@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import { clearAllResults, fetchAllResults } from "../services/resultsApi";
 import { loadStudents } from "../utils/studentStorage";
+import { ensureArray } from "../utils/safeData";
 import {
   clearTeacherSession,
   isTeacherAuthed,
@@ -28,14 +29,14 @@ export default function TeacherApp({ onBack }) {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [results, setResults] = useState([]);
-  const [students, setStudents] = useState(() => loadStudents());
+  const [students, setStudents] = useState(() => ensureArray(loadStudents()));
   const [loading, setLoading] = useState(true);
 
   const loadResults = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchAllResults();
-      setResults(data);
+      setResults(ensureArray(data));
     } catch (error) {
       console.error(error);
       alert("성적을 불러오는 중 오류가 발생했습니다.");
@@ -78,20 +79,6 @@ export default function TeacherApp({ onBack }) {
     await clearAllResults();
     setResults([]);
   };
-
-  const studentSummary = useMemo(() => {
-    return students.map((student) => {
-      const studentResults = results
-        .filter((r) => r.studentId === student.id)
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-      const latest = studentResults[0] || null;
-      return {
-        ...student,
-        submitted: studentResults.length > 0,
-        latest,
-      };
-    });
-  }, [results, students]);
 
   if (!authed) {
     return (
@@ -184,7 +171,9 @@ export default function TeacherApp({ onBack }) {
           />
         )}
         {activeTab === "students" && (
-          <TeacherStudentManagementTab onStudentsChange={setStudents} />
+          <TeacherStudentManagementTab
+            onStudentsChange={(next) => setStudents(ensureArray(next))}
+          />
         )}
         {activeTab === "questionBank" && <TeacherQuestionBankTab />}
         {activeTab === "examBuilder" && <TeacherExamBuilderTab />}

@@ -1,6 +1,7 @@
 import { getTodayDateString } from "./levels";
 import { MAX_MCQ_OPTIONS } from "./mcqOptions";
 import { createPassageId } from "./readingPassage";
+import { ensureArray } from "./safeData";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
@@ -85,7 +86,7 @@ export function normalizeQuestion(question) {
 }
 
 export function loadQuestionBank() {
-  return readJson(QUESTION_BANK_KEY).map(normalizeQuestion);
+  return ensureArray(readJson(QUESTION_BANK_KEY)).map(normalizeQuestion);
 }
 
 export function addQuestion({
@@ -172,7 +173,7 @@ export function formatQuestionAnswer(question) {
 }
 
 export function loadExamSets() {
-  return readJson(EXAM_SETS_KEY);
+  return ensureArray(readJson(EXAM_SETS_KEY));
 }
 
 export function addExamSet({ title, questions, targetLevel, testDate }) {
@@ -191,8 +192,9 @@ export function addExamSet({ title, questions, targetLevel, testDate }) {
 }
 
 export function filterQuestionsByLevel(questions, targetLevel) {
-  if (!targetLevel) return questions;
-  return questions.filter((q) => q.level === targetLevel);
+  const list = ensureArray(questions);
+  if (!targetLevel) return list;
+  return list.filter((q) => q?.level === targetLevel);
 }
 
 export function getAvailableExamsForStudent(level, date = getTodayDateString()) {
@@ -201,7 +203,10 @@ export function getAvailableExamsForStudent(level, date = getTodayDateString()) 
   if (!studentLevel || !today) return [];
 
   return loadExamSets().filter(
-    (exam) => exam.targetLevel === studentLevel && exam.testDate === today
+    (exam) =>
+      exam?.targetLevel === studentLevel &&
+      exam?.testDate === today &&
+      ensureArray(exam?.questions).length > 0
   );
 }
 

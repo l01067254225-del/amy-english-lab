@@ -13,6 +13,14 @@ export default function StudentLevelCompareDashboard({
   showFeedback = true,
   className = "",
 }) {
+  if (!result) {
+    return (
+      <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
+        비교할 성적 데이터가 없습니다.
+      </p>
+    );
+  }
+
   const level = levelProp || getStudentLevel(studentId);
   const stats = getLevelTestAverage(result.testId, level, {
     excludeStudentId: studentId,

@@ -23,7 +23,9 @@ export function clearResults() {
 }
 
 export function formatDate(isoString) {
+  if (!isoString) return "—";
   const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString("ko-KR", {
     month: "numeric",
     day: "numeric",

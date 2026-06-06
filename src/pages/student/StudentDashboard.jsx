@@ -5,6 +5,7 @@ import { getExamQuestionCount, getExamSubjectSummary } from "../../utils/examHel
 import { getStudentLevel } from "../../utils/levelStats";
 import { formatTestDate, getTodayDateString } from "../../utils/levels";
 import { getAvailableExamsForStudent } from "../../utils/questionBankStorage";
+import { ensureArray } from "../../utils/safeData";
 
 export default function StudentDashboard({
   student,
@@ -12,27 +13,36 @@ export default function StudentDashboard({
   onStartExam,
   onViewResult,
 }) {
-  const studentKey = student.id;
+  const studentKey = student?.id ?? "";
+  const studentName = student?.name || studentKey || "학생";
   const today = getTodayDateString();
   const studentLevel = student.level || getStudentLevel(studentKey);
 
   const [savedResults, setSavedResults] = useState([]);
 
   const availableExams = useMemo(
-    () => getAvailableExamsForStudent(studentLevel, today),
+    () => ensureArray(getAvailableExamsForStudent(studentLevel, today)),
     [studentLevel, today]
   );
 
   const loadMyResults = useCallback(async () => {
-    const all = await fetchAllResults();
-    const mine = all
-      .filter((r) => r.studentId === studentKey || r.studentName === studentKey)
-      .sort(
-        (a, b) =>
-          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-      );
-    setSavedResults(mine);
-    return mine;
+    try {
+      const all = await fetchAllResults();
+      const list = ensureArray(all);
+      const mine = list
+        .filter((r) => r && (r.studentId === studentKey || r.studentName === studentKey))
+        .sort(
+          (a, b) =>
+            new Date(b?.submittedAt || 0).getTime() -
+            new Date(a?.submittedAt || 0).getTime()
+        );
+      setSavedResults(mine);
+      return mine;
+    } catch (error) {
+      console.error(error);
+      setSavedResults([]);
+      return [];
+    }
   }, [studentKey]);
 
   useEffect(() => {
@@ -40,8 +50,8 @@ export default function StudentDashboard({
   }, [loadMyResults]);
 
   const greeting = studentLevel
-    ? `안녕하세요, ${student.name} 학생 (레벨: ${studentLevel})`
-    : `안녕하세요, ${student.name} 학생`;
+    ? `안녕하세요, ${studentName} 학생 (레벨: ${studentLevel})`
+    : `안녕하세요, ${studentName} 학생`;
 
   return (
     <div style={pageStyle}>
@@ -98,7 +108,7 @@ export default function StudentDashboard({
 
           {savedResults.length === 0 ? (
             <div style={emptyCardStyle}>
-              <p style={emptyTextStyle}>아직 응시한 시험 기록이 없습니다.</p>
+              <p style={emptyTextStyle}>등록된 시험 이력이 없습니다.</p>
             </div>
           ) : (
             <div style={historyCardStyle}>
