@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import IncorrectAnswerNoteModal from "../../components/IncorrectAnswerNoteModal";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
+import TeacherResultDetailModal from "../../components/TeacherResultDetailModal";
 import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
 import {
   buildDailySmsText,
@@ -33,6 +34,7 @@ export default function TeacherResultsTab({
   const [nameQuery, setNameQuery] = useState("");
   const [printTarget, setPrintTarget] = useState(null);
   const [incorrectTarget, setIncorrectTarget] = useState(null);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const safeStudents = ensureArray(students);
   const safeResults = ensureArray(results);
@@ -81,6 +83,10 @@ export default function TeacherResultsTab({
     ? registryRows.find((row) => row.id === printTarget.id) ?? printTarget
     : null;
 
+  const detailRow = detailTarget
+    ? registryRows.find((row) => row.id === detailTarget.id) ?? detailTarget
+    : null;
+
   const handleCopyDailySms = async (row) => {
     const dateKey = getResultDateKey(row.submittedAt);
     const dayResults = getStudentResultsOnDate(
@@ -124,8 +130,8 @@ export default function TeacherResultsTab({
       <div style={summaryCard}>
         <h2 style={sectionTitle}>전체 성적 목록</h2>
         <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
-          당일 결과는 [문자 복사]로 전송하고, [성적표 인쇄]로 최근 1달 누적 통계를 확인할 수
-          있습니다.
+          행을 클릭하거나 [상세 보기]로 문항별 답안을 확인할 수 있습니다. 당일 결과는 [문자
+          복사]로 전송하고, [성적표 인쇄]로 최근 1달 누적 통계를 확인할 수 있습니다.
         </p>
 
         <div
@@ -184,12 +190,17 @@ export default function TeacherResultsTab({
                   <th style={thTdStyle}>시험 제목</th>
                   <th style={thTdStyle}>과목</th>
                   <th style={thTdStyle}>점수 / 만점</th>
-                  <th style={{ ...thTdStyle, textAlign: "right", minWidth: 320 }}></th>
+                  <th style={{ ...thTdStyle, textAlign: "right", minWidth: 380 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    onClick={() => setDetailTarget(row)}
+                    style={clickableRowStyle}
+                    title="클릭하여 상세 답안 보기"
+                  >
                     <td style={thTdStyle}>{formatDate(row.submittedAt)}</td>
                     <td style={thTdStyle}>
                       <strong>{row.studentName}</strong>
@@ -208,14 +219,30 @@ export default function TeacherResultsTab({
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={() => handleCopyDailySms(row)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDetailTarget(row);
+                          }}
+                          style={detailRowBtnStyle}
+                        >
+                          상세 보기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCopyDailySms(row);
+                          }}
                           style={smsRowBtnStyle}
                         >
                           문자 복사
                         </button>
                         <button
                           type="button"
-                          onClick={() => setPrintTarget(row)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setPrintTarget(row);
+                          }}
                           style={printRowBtnStyle}
                         >
                           성적표 인쇄
@@ -223,7 +250,10 @@ export default function TeacherResultsTab({
                         {countIncorrectAnswers(row) > 0 && (
                           <button
                             type="button"
-                            onClick={() => setIncorrectTarget(row)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setIncorrectTarget(row);
+                            }}
                             style={incorrectRowBtnStyle}
                           >
                             오답 노트
@@ -257,6 +287,14 @@ export default function TeacherResultsTab({
             setIncorrectTarget(updated);
             onRefresh?.();
           }}
+        />
+      )}
+
+      {detailRow && (
+        <TeacherResultDetailModal
+          result={detailRow}
+          studentLevel={detailRow.level === "—" ? "" : detailRow.level}
+          onClose={() => setDetailTarget(null)}
         />
       )}
     </>
@@ -307,4 +345,15 @@ const incorrectRowBtnStyle = {
   borderColor: "#cbd5e1",
   background: "white",
   color: "#334155",
+};
+
+const detailRowBtnStyle = {
+  ...printRowBtnStyle,
+  borderColor: "#ddd6fe",
+  background: "#f5f3ff",
+  color: "#6d28d9",
+};
+
+const clickableRowStyle = {
+  cursor: "pointer",
 };
