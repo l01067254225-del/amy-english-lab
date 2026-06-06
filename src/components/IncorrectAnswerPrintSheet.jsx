@@ -1,7 +1,20 @@
 import { shouldShowReadingPassage } from "../utils/examTakeView";
-import { getSubjectLabel } from "../utils/questionBankStorage";
+import { formatQuestionAnswer, getSubjectLabel } from "../utils/questionBankStorage";
 import { ensureArray } from "../utils/safeData";
 import "../styles/incorrectAnswerPrint.css";
+
+function formatClinicUserAnswer(question, userAnswer) {
+  const raw = String(userAnswer ?? "").trim();
+  if (!raw) return "(미입력)";
+
+  if (question.type === "objective") {
+    const optionIndex = Number(raw) - 1;
+    const optionText = ensureArray(question.options)[optionIndex];
+    if (optionText) return `${raw}번 · ${optionText}`;
+  }
+
+  return raw;
+}
 
 export function triggerIncorrectNotePrint() {
   document.body.classList.add("incorrect-note-printing");
@@ -19,14 +32,17 @@ export default function IncorrectAnswerPrintSheet({
   studentName,
   testTitle,
   items,
+  clinicRetestSummary = null,
 }) {
   const safeItems = ensureArray(items);
+  const hasClinicRetest = Boolean(clinicRetestSummary);
 
   if (safeItems.length === 0) {
     return null;
   }
 
   const questions = safeItems.map((item) => item.question);
+  const retestFixedCount = safeItems.filter((item) => item.clinicRetest?.correct).length;
 
   return (
     <div id="incorrect-note-print-root" aria-hidden="true" style={hiddenHostStyle}>
@@ -37,7 +53,12 @@ export default function IncorrectAnswerPrintSheet({
             오답 클리닉 리포트 · {studentName || "학생"}
           </h1>
           {testTitle && <p style={subtitleStyle}>{testTitle}</p>}
-          <p style={metaStyle}>총 {safeItems.length}문항 · 연필로 다시 풀어 보세요</p>
+          <p style={metaStyle}>
+            총 {safeItems.length}문항
+            {hasClinicRetest
+              ? ` · 온라인 재응시 ${clinicRetestSummary.correctCount}/${clinicRetestSummary.totalCount} 정답 (${retestFixedCount}문항 복습 완료)`
+              : " · 연필로 다시 풀어 보세요"}
+          </p>
         </header>
 
         {safeItems.map((item, index) => {
@@ -91,12 +112,35 @@ export default function IncorrectAnswerPrintSheet({
               ) : null}
 
               <div style={answerAreaStyle}>
-                <p style={answerLabelStyle}>답안 작성란</p>
-                <div style={linedAreaStyle}>
-                  {Array.from({ length: isObjective ? 2 : 4 }).map((_, lineIndex) => (
-                    <div key={lineIndex} style={noteLineStyle} />
-                  ))}
-                </div>
+                {item.clinicRetest ? (
+                  <>
+                    <p style={retestResultLabelStyle}>
+                      온라인 재응시 결과:{" "}
+                      <strong
+                        style={{
+                          color: item.clinicRetest.correct ? "#047857" : "#b91c1c",
+                        }}
+                      >
+                        {item.clinicRetest.correct ? "정답 (O)" : "오답 (X)"}
+                      </strong>
+                    </p>
+                    <p style={retestAnswerStyle}>
+                      학생 답안: {formatClinicUserAnswer(question, item.clinicRetest.userAnswer)}
+                    </p>
+                    <p style={retestAnswerStyle}>
+                      정답: {formatQuestionAnswer(question)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p style={answerLabelStyle}>답안 작성란</p>
+                    <div style={linedAreaStyle}>
+                      {Array.from({ length: isObjective ? 2 : 4 }).map((_, lineIndex) => (
+                        <div key={lineIndex} style={noteLineStyle} />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           );
@@ -242,6 +286,20 @@ const answerLabelStyle = {
   fontSize: 12,
   fontWeight: 700,
   color: "#64748b",
+};
+
+const retestResultLabelStyle = {
+  margin: "0 0 8px",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#334155",
+};
+
+const retestAnswerStyle = {
+  margin: "0 0 6px",
+  fontSize: 13,
+  color: "#475569",
+  lineHeight: 1.6,
 };
 
 const linedAreaStyle = {

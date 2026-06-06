@@ -1,6 +1,6 @@
 import IncorrectAnswerTools from "./IncorrectAnswerTools";
 
-export default function IncorrectAnswerNoteModal({ result, studentName, onClose }) {
+export default function IncorrectAnswerNoteModal({ result, studentName, onClose, onResultUpdate }) {
   if (!result) return null;
 
   return (
@@ -15,7 +15,12 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
         <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: 14 }}>
           {studentName} · {result.testTitle}
         </p>
-        <IncorrectAnswerTools result={result} studentName={studentName} layout="vertical" />
+        <IncorrectAnswerTools
+          result={result}
+          studentName={studentName}
+          layout="vertical"
+          onResultUpdate={onResultUpdate}
+        />
       </div>
     </div>
   );

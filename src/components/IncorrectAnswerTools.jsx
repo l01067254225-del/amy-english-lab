@@ -5,7 +5,9 @@ import IncorrectAnswerPrintSheet, {
 } from "./IncorrectAnswerPrintSheet";
 import {
   countIncorrectAnswers,
-  getIncorrectQuestionItems,
+  getClinicRetestSummary,
+  getIncorrectItemsForPrint,
+  isClinicRetestCompleted,
 } from "../utils/incorrectAnswerClinic";
 
 export default function IncorrectAnswerTools({
@@ -15,6 +17,7 @@ export default function IncorrectAnswerTools({
   showPrint = true,
   showClinic = true,
   mountPrintSheet = true,
+  onResultUpdate,
 }) {
   const [clinicOpen, setClinicOpen] = useState(false);
 
@@ -22,8 +25,16 @@ export default function IncorrectAnswerTools({
     () => countIncorrectAnswers(result),
     [result]
   );
-  const incorrectItems = useMemo(
-    () => getIncorrectQuestionItems(result),
+  const printItems = useMemo(
+    () => getIncorrectItemsForPrint(result),
+    [result]
+  );
+  const clinicRetestSummary = useMemo(
+    () => getClinicRetestSummary(result),
+    [result]
+  );
+  const clinicCompleted = useMemo(
+    () => isClinicRetestCompleted(result),
     [result]
   );
 
@@ -36,6 +47,11 @@ export default function IncorrectAnswerTools({
   }
 
   const isRow = layout === "row";
+
+  const handleClinicSaved = (updatedResult) => {
+    onResultUpdate?.(updatedResult);
+    setClinicOpen(false);
+  };
 
   return (
     <>
@@ -58,7 +74,7 @@ export default function IncorrectAnswerTools({
             오답 노트 다운로드 (인쇄)
           </button>
         )}
-        {showClinic && (
+        {showClinic && !clinicCompleted && (
           <button
             type="button"
             onClick={() => setClinicOpen(true)}
@@ -67,21 +83,30 @@ export default function IncorrectAnswerTools({
             오답 노트 온라인 재응시 ({incorrectCount}문항)
           </button>
         )}
+        {showClinic && clinicCompleted && (
+          <p style={clinicDoneStyle}>
+            온라인 재응시 완료 ({clinicRetestSummary?.correctCount ?? 0}/
+            {clinicRetestSummary?.totalCount ?? incorrectCount} 정답) · 1회 제한으로
+            재응시할 수 없습니다.
+          </p>
+        )}
       </div>
 
       {mountPrintSheet && (showPrint || showClinic) && (
         <IncorrectAnswerPrintSheet
           studentName={studentName}
           testTitle={result.testTitle}
-          items={incorrectItems}
+          items={printItems}
+          clinicRetestSummary={clinicRetestSummary}
         />
       )}
 
-      {clinicOpen && (
+      {clinicOpen && !clinicCompleted && (
         <IncorrectAnswerClinicModal
           result={result}
           studentName={studentName}
           onClose={() => setClinicOpen(false)}
+          onSaved={handleClinicSaved}
         />
       )}
     </>
@@ -104,4 +129,16 @@ const clinicBtnStyle = {
   border: "none",
   background: "#2563eb",
   color: "white",
+};
+
+const clinicDoneStyle = {
+  margin: 0,
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#f1f5f9",
+  border: "1px solid #e2e8f0",
+  color: "#64748b",
+  fontSize: 13,
+  fontWeight: 600,
+  lineHeight: 1.5,
 };

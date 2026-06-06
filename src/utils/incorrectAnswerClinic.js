@@ -1,6 +1,17 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { loadExamSets } from "./questionBankStorage";
 import { ensureArray } from "./safeData";
+import {
+  enrichIncorrectItemsWithClinic,
+  isClinicRetestCompleted,
+} from "./clinicRetestStorage";
+
+export {
+  isClinicRetestCompleted,
+  saveClinicRetestResult,
+  getClinicRetestSummary,
+  enrichIncorrectItemsWithClinic,
+} from "./clinicRetestStorage";
 
 export function getExamByTestId(testId) {
   if (!testId) return null;
@@ -28,4 +39,8 @@ export function getIncorrectQuestionItems(result) {
 
 export function countIncorrectAnswers(result) {
   return getIncorrectQuestionItems(result).length;
+}
+
+export function getIncorrectItemsForPrint(result) {
+  return enrichIncorrectItemsWithClinic(result, getIncorrectQuestionItems(result));
 }

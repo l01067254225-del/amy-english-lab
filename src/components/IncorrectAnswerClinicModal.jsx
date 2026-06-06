@@ -2,36 +2,71 @@ import { useMemo, useState } from "react";
 import QuestionCard from "./QuestionCard";
 import { shouldShowReadingPassage } from "../utils/examTakeView";
 import { gradeQuestion } from "../utils/grade";
-import { getIncorrectQuestionItems } from "../utils/incorrectAnswerClinic";
+import {
+  getIncorrectQuestionItems,
+  isClinicRetestCompleted,
+  saveClinicRetestResult,
+} from "../utils/incorrectAnswerClinic";
 import {
   IncorrectAnswerCloseButton,
-  IncorrectAnswerRetryButton,
   IncorrectAnswerSubmitButton,
 } from "./IncorrectAnswerModalButtons";
 import { incorrectAnswerFooterStyle } from "./incorrectAnswerModalStyles";
 
-export default function IncorrectAnswerClinicModal({ result, studentName, onClose }) {
+function buildInitialAnswers(result, items) {
+  if (!isClinicRetestCompleted(result)) return {};
+
+  const byQuestionId = new Map(
+    (result.clinicRetest?.items ?? []).map((item) => [item.questionId, item.userAnswer])
+  );
+
+  return Object.fromEntries(
+    items.map((item) => [item.question.id, byQuestionId.get(item.question.id) ?? ""])
+  );
+}
+
+export default function IncorrectAnswerClinicModal({
+  result,
+  studentName,
+  onClose,
+  onSaved,
+}) {
   const items = useMemo(() => getIncorrectQuestionItems(result), [result]);
   const questions = useMemo(() => items.map((item) => item.question), [items]);
+  const alreadyCompleted = useMemo(() => isClinicRetestCompleted(result), [result]);
 
-  const [answers, setAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
+  const [answers, setAnswers] = useState(() => buildInitialAnswers(result, items));
+  const [submitted, setSubmitted] = useState(alreadyCompleted);
+  const [saving, setSaving] = useState(false);
 
   const setAnswer = (qid, value) => {
+    if (submitted || alreadyCompleted) return;
     setAnswers((prev) => ({ ...prev, [qid]: value }));
   };
 
   const handleSubmit = () => {
-    setSubmitted(true);
-  };
+    if (submitted || saving || alreadyCompleted) return;
 
-  const handleRetry = () => {
-    setAnswers({});
-    setSubmitted(false);
+    setSaving(true);
+    try {
+      const updated = saveClinicRetestResult(result, items, answers);
+      setSubmitted(true);
+      onSaved?.(updated);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const scoreSummary = useMemo(() => {
     if (!submitted) return null;
+
+    if (alreadyCompleted && result.clinicRetest) {
+      return {
+        correct: Number(result.clinicRetest.correctCount ?? 0),
+        total: Number(result.clinicRetest.totalCount ?? items.length),
+      };
+    }
+
     let correct = 0;
     items.forEach((item) => {
       if (gradeQuestion(item.question, answers[item.question.id]) === 1) {
@@ -39,7 +74,7 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
       }
     });
     return { correct, total: items.length };
-  }, [submitted, items, answers]);
+  }, [submitted, alreadyCompleted, result, items, answers]);
 
   if (!result || items.length === 0) {
     return (
@@ -64,6 +99,7 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
             </h2>
             <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
               {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항
+              {alreadyCompleted ? " · 재응시 완료" : " · 1회만 응시 가능"}
             </p>
           </div>
         </div>
@@ -71,6 +107,7 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         {submitted && scoreSummary && (
           <div style={summaryBannerStyle}>
             재응시 결과: {scoreSummary.correct}/{scoreSummary.total} 정답
+            {alreadyCompleted ? " (제출 완료 · 수정 불가)" : ""}
           </div>
         )}
 
@@ -91,14 +128,11 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         <div style={incorrectAnswerFooterStyle}>
           {!submitted ? (
             <>
-              <IncorrectAnswerCloseButton onClick={onClose} />
-              <IncorrectAnswerSubmitButton onClick={handleSubmit} />
+              <IncorrectAnswerCloseButton onClick={onClose} disabled={saving} />
+              <IncorrectAnswerSubmitButton onClick={handleSubmit} disabled={saving} />
             </>
           ) : (
-            <>
-              <IncorrectAnswerRetryButton onClick={handleRetry} />
-              <IncorrectAnswerCloseButton onClick={onClose} />
-            </>
+            <IncorrectAnswerCloseButton onClick={onClose} />
           )}
         </div>
       </div>

@@ -61,6 +61,12 @@ export default function StudentTestResult({
     onRetest?.(result.testId, result.id);
   };
 
+  const handleResultUpdate = useCallback((updatedResult) => {
+    setSavedResults((prev) =>
+      prev.map((entry) => (entry.id === updatedResult.id ? updatedResult : entry))
+    );
+  }, []);
+
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
@@ -86,6 +92,7 @@ export default function StudentTestResult({
                 studentName={studentName}
                 showPrint
                 showClinic={false}
+                onResultUpdate={handleResultUpdate}
               />
             )}
 
@@ -163,7 +170,14 @@ export default function StudentTestResult({
                         color: d.correct ? "#047857" : "#b91c1c",
                       }}
                     >
-                      <span>Q{d.num}</span>
+                      <span>
+                        Q{d.num}
+                        {d.clinicRetest && (
+                          <span style={clinicRetestTagStyle}>
+                            재응시 {d.clinicRetest.correct ? "O" : "X"}
+                          </span>
+                        )}
+                      </span>
                       <span style={{ fontWeight: 800 }}>{d.correct ? "O" : "X"}</span>
                     </li>
                   ))}
@@ -175,6 +189,7 @@ export default function StudentTestResult({
                   showPrint={false}
                   showClinic
                   mountPrintSheet={false}
+                  onResultUpdate={handleResultUpdate}
                 />
               </>
             )}
@@ -314,4 +329,12 @@ const detailItemStyle = {
   background: "#f8fafc",
   border: "1px solid #e2e8f0",
   fontSize: 14,
+};
+
+const clinicRetestTagStyle = {
+  display: "block",
+  marginTop: 2,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#64748b",
 };
