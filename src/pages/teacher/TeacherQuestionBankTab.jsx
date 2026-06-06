@@ -17,6 +17,11 @@ import {
   getTextPasteExample,
   getTextPasteHint,
 } from "../../utils/parseQuestionText";
+import {
+  getVocabPasteExample,
+  getVocabPasteHint,
+  parseVocabQuestionText,
+} from "../../utils/parseVocabText";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 import {
@@ -204,24 +209,51 @@ export default function TeacherQuestionBankTab() {
       return;
     }
 
+    if (!questionLevel) {
+      alert("문제 추가 폼에서 레벨을 먼저 선택해 주세요.");
+      return;
+    }
+
     setPasteAnalyzing(true);
     try {
-      const { items, errors } = parseQuestionText(pasteText, {
-        defaultSubject: pasteSubject,
-      });
+      const isVocabPaste = pasteSubject === "vocab";
+      const { items, errors } = isVocabPaste
+        ? parseVocabQuestionText(pasteText, {
+            questionType,
+            level: questionLevel,
+          })
+        : parseQuestionText(pasteText, {
+            defaultSubject: pasteSubject,
+          });
 
       if (items.length === 0) {
         const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
-        alert(`등록할 문항을 찾지 못했습니다.${detail}`);
+        alert(
+          isVocabPaste
+            ? `등록할 Voca 단어를 찾지 못했습니다.${detail}`
+            : `등록할 문항을 찾지 못했습니다.${detail}`
+        );
         return;
       }
 
-      const next = addQuestionsBulk(items);
+      const enrichedItems = isVocabPaste
+        ? items
+        : items.map((item) => ({ ...item, level: questionLevel }));
+
+      const next = addQuestionsBulk(enrichedItems);
       setQuestions(next);
       setPasteText("");
 
       const errorNote =
-        errors.length > 0 ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}` : "";
+        errors.length > 0
+          ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
+          : "";
+
+      if (isVocabPaste) {
+        alert(`Voca 단어 총 ${items.length}개가 성공적으로 등록되었습니다!${errorNote}`);
+        return;
+      }
+
       alert(`성공적으로 ${items.length}개의 문항이 등록되었습니다.${errorNote}`);
     } finally {
       setPasteAnalyzing(false);
@@ -485,12 +517,20 @@ export default function TeacherQuestionBankTab() {
         <textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
-          placeholder={getTextPasteExample(pasteSubject)}
+          placeholder={
+            pasteSubject === "vocab"
+              ? getVocabPasteExample()
+              : getTextPasteExample(pasteSubject)
+          }
           style={pasteTextareaStyle}
         />
 
         <div style={pasteFooterStyle}>
-          <p style={pasteHintStyle}>{getTextPasteHint(pasteSubject)}</p>
+          <p style={pasteHintStyle}>
+            {pasteSubject === "vocab"
+              ? getVocabPasteHint(questionType)
+              : getTextPasteHint(pasteSubject)}
+          </p>
           <button
             type="button"
             onClick={handlePasteAnalyze}
