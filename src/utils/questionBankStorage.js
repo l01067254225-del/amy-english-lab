@@ -176,7 +176,7 @@ export function loadExamSets() {
   return ensureArray(readJson(EXAM_SETS_KEY));
 }
 
-export function addExamSet({ title, questions, targetLevel, testDate }) {
+export function addExamSet({ title, questions, targetLevel, testDate, vocaSource = null }) {
   const item = {
     id: `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: title.trim(),
@@ -185,6 +185,7 @@ export function addExamSet({ title, questions, targetLevel, testDate }) {
     questionIds: questions.map((q) => q.id),
     questions: questions.map(normalizeQuestion),
     createdAt: new Date().toISOString(),
+    ...(vocaSource ? { vocaSource } : {}),
   };
   const next = [item, ...loadExamSets()];
   writeJson(EXAM_SETS_KEY, next);

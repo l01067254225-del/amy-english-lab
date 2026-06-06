@@ -185,9 +185,6 @@ resilient  회복력 있는
 5. curious 뜻: 호기심 많은`;
 }
 
-export function getVocabPasteHint(questionType = "subjective") {
-  if (questionType === "objective") {
-    return "Voca: '영어단어+한글뜻'(공백·기호 없음), '단어 : 뜻', '단어 - 뜻' 등 다양한 형식을 인식합니다. 객관식은 5지선다가 자동 생성됩니다.";
-  }
-  return "Voca: 'boost밀어올리다'처럼 붙어 있어도, ': · - · 뜻:' 등 구분 기호가 있어도 자동 분리됩니다. 줄마다 한 단어씩 입력하세요.";
+export function getVocabPasteHint() {
+  return "Voca: 붙여넣은 단어는 하나의 '단어 세트'로 묶여 저장됩니다. 'boost밀어올리다'처럼 붙어 있어도, ': · - · 뜻:' 등 구분 기호가 있어도 자동 분리됩니다.";
 }

@@ -20,8 +20,14 @@ import {
 import {
   getVocabPasteExample,
   getVocabPasteHint,
-  parseVocabQuestionText,
+  parseVocabEntries,
 } from "../../utils/parseVocabText";
+import {
+  addVocaSet,
+  loadVocaSets,
+  removeVocaSet,
+  suggestVocaSetName,
+} from "../../utils/vocaSetStorage";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 import {
@@ -48,6 +54,8 @@ export default function TeacherQuestionBankTab() {
   const [pasteText, setPasteText] = useState("");
   const [pasteSubject, setPasteSubject] = useState("grammar");
   const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
+  const [vocabSetName, setVocabSetName] = useState("");
+  const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
 
   const isReading = subject === "reading";
 
@@ -73,6 +81,22 @@ export default function TeacherQuestionBankTab() {
     () => buildQuestionDisplayList(filteredQuestions),
     [filteredQuestions]
   );
+
+  const filteredVocaSets = useMemo(() => {
+    if (filterSubject !== "all" && filterSubject !== "vocab") return [];
+    const query = searchQuery.trim().toLowerCase();
+    return vocaSets.filter((set) => {
+      if (!query) return true;
+      const haystack = [
+        set.setName,
+        set.level,
+        ...set.words.flatMap((word) => [word.word, word.mean]),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [vocaSets, searchQuery, filterSubject]);
 
   const handleSubjectChange = (nextSubject) => {
     setSubject(nextSubject);
@@ -168,6 +192,11 @@ export default function TeacherQuestionBankTab() {
     setQuestions(removeQuestion(id));
   };
 
+  const handleDeleteVocaSet = (setId) => {
+    if (!confirm("이 Voca 단어 세트를 삭제할까요?")) return;
+    setVocaSets(removeVocaSet(setId));
+  };
+
   const processCsvFile = async (file) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".csv")) {
@@ -217,28 +246,53 @@ export default function TeacherQuestionBankTab() {
     setPasteAnalyzing(true);
     try {
       const isVocabPaste = pasteSubject === "vocab";
-      const { items, errors } = isVocabPaste
-        ? parseVocabQuestionText(pasteText, {
-            questionType,
-            level: questionLevel,
-          })
-        : parseQuestionText(pasteText, {
-            defaultSubject: pasteSubject,
-          });
 
-      if (items.length === 0) {
-        const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+      if (isVocabPaste) {
+        const { entries, errors } = parseVocabEntries(pasteText);
+
+        if (entries.length === 0) {
+          const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+          alert(`등록할 Voca 단어를 찾지 못했습니다.${detail}`);
+          return;
+        }
+
+        const setName = vocabSetName.trim() || suggestVocaSetName(questionLevel);
+        const words = entries.map((entry) => ({
+          word: entry.word,
+          mean: entry.meaning,
+        }));
+
+        const nextSets = addVocaSet({
+          setName,
+          level: questionLevel,
+          words,
+        });
+        setVocaSets(nextSets);
+        setPasteText("");
+        setVocabSetName("");
+
+        const errorNote =
+          errors.length > 0
+            ? `\n\n건너뛴 줄 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
+            : "";
+
         alert(
-          isVocabPaste
-            ? `등록할 Voca 단어를 찾지 못했습니다.${detail}`
-            : `등록할 문항을 찾지 못했습니다.${detail}`
+          `Voca 단어 세트 "${setName}" — 총 ${words.length}개 단어가 세트로 등록되었습니다!${errorNote}`
         );
         return;
       }
 
-      const enrichedItems = isVocabPaste
-        ? items
-        : items.map((item) => ({ ...item, level: questionLevel }));
+      const { items, errors } = parseQuestionText(pasteText, {
+        defaultSubject: pasteSubject,
+      });
+
+      if (items.length === 0) {
+        const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+        alert(`등록할 문항을 찾지 못했습니다.${detail}`);
+        return;
+      }
+
+      const enrichedItems = items.map((item) => ({ ...item, level: questionLevel }));
 
       const next = addQuestionsBulk(enrichedItems);
       setQuestions(next);
@@ -248,11 +302,6 @@ export default function TeacherQuestionBankTab() {
         errors.length > 0
           ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
           : "";
-
-      if (isVocabPaste) {
-        alert(`Voca 단어 총 ${items.length}개가 성공적으로 등록되었습니다!${errorNote}`);
-        return;
-      }
 
       alert(`성공적으로 ${items.length}개의 문항이 등록되었습니다.${errorNote}`);
     } finally {
@@ -514,6 +563,19 @@ export default function TeacherQuestionBankTab() {
           </label>
         </div>
 
+        {pasteSubject === "vocab" && (
+          <label style={{ ...fieldLabelStyle, marginBottom: 12, display: "block" }}>
+            단어 세트 이름
+            <input
+              type="text"
+              value={vocabSetName}
+              onChange={(e) => setVocabSetName(e.target.value)}
+              placeholder={questionLevel ? suggestVocaSetName(questionLevel) : "예: 중등 필수 어휘 Day 1"}
+              style={selectStyle}
+            />
+          </label>
+        )}
+
         <textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
@@ -528,7 +590,7 @@ export default function TeacherQuestionBankTab() {
         <div style={pasteFooterStyle}>
           <p style={pasteHintStyle}>
             {pasteSubject === "vocab"
-              ? getVocabPasteHint(questionType)
+              ? getVocabPasteHint()
               : getTextPasteHint(pasteSubject)}
           </p>
           <button
@@ -548,7 +610,10 @@ export default function TeacherQuestionBankTab() {
           <div>
             <h2 style={panelTitleStyle}>문제은행 목록</h2>
             <p style={panelDescStyle}>
-              총 {questions.length}건 · 표시 {filteredQuestions.length}건
+              총 {questions.length}건 · Voca 세트 {vocaSets.length}개 · 표시{" "}
+              {filterSubject === "vocab" || filterSubject === "all"
+                ? `${filteredVocaSets.length}세트 · ${filteredQuestions.length}문항`
+                : `${filteredQuestions.length}건`}
             </p>
           </div>
           <input
@@ -578,16 +643,33 @@ export default function TeacherQuestionBankTab() {
           ))}
         </div>
 
-        {filteredQuestions.length === 0 ? (
+        {(filterSubject === "all" || filterSubject === "vocab") && filteredVocaSets.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={vocaSetSectionTitleStyle}>Voca 단어 세트 ({filteredVocaSets.length})</h3>
+            <div style={cardListStyle}>
+              {filteredVocaSets.map((set) => (
+                <VocaSetCard key={set.setId} set={set} onDelete={handleDeleteVocaSet} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {filteredQuestions.length === 0 &&
+        !(
+          (filterSubject === "vocab" || filterSubject === "all") &&
+          filteredVocaSets.length > 0
+        ) ? (
           <div style={emptyStateStyle}>
             <p style={{ margin: 0, fontWeight: 700, color: "#334155" }}>
-              {questions.length === 0 ? "등록된 문제가 없습니다." : "검색 결과가 없습니다."}
+              {questions.length === 0 && vocaSets.length === 0
+                ? "등록된 문제가 없습니다."
+                : "검색 결과가 없습니다."}
             </p>
             <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 14 }}>
               위에서 문제를 추가하거나 CSV·텍스트 붙여넣기로 등록해 보세요.
             </p>
           </div>
-        ) : (
+        ) : filteredQuestions.length > 0 ? (
           <div style={cardListStyle}>
             {displayList.map((item) =>
               item.type === "readingGroup" ? (
@@ -607,9 +689,58 @@ export default function TeacherQuestionBankTab() {
               )
             )}
           </div>
-        )}
+        ) : null}
       </section>
     </div>
+  );
+}
+
+function VocaSetCard({ set, onDelete }) {
+  const subjectMeta = getSubjectMeta("vocab");
+  const preview = set.words.slice(0, 6);
+  const restCount = Math.max(0, set.words.length - preview.length);
+
+  return (
+    <article
+      style={{
+        ...cardStyle,
+        borderLeft: `4px solid ${subjectMeta.color}`,
+        background: subjectMeta.bg,
+      }}
+    >
+      <div style={cardTopStyle}>
+        <div style={badgeRowStyle}>
+          <span
+            style={{
+              ...subjectBadgeStyle,
+              color: subjectMeta.color,
+              background: "white",
+            }}
+          >
+            Voca · 단어 세트
+          </span>
+          <span style={readingCountBadgeStyle}>단어 {set.words.length}개</span>
+          {set.level ? <span style={levelBadgeStyle}>{set.level}</span> : null}
+        </div>
+        <button type="button" onClick={() => onDelete(set.setId)} style={deleteBtnStyle}>
+          삭제
+        </button>
+      </div>
+
+      <h3 style={vocaSetNameStyle}>{set.setName}</h3>
+      <p style={vocaSetMetaStyle}>
+        {new Date(set.createdAt).toLocaleDateString("ko-KR")} 등록
+      </p>
+
+      <ul style={vocaWordPreviewStyle}>
+        {preview.map((entry) => (
+          <li key={`${entry.word}-${entry.mean}`}>
+            <strong>{entry.word}</strong> — {entry.mean}
+          </li>
+        ))}
+        {restCount > 0 ? <li style={{ color: "#64748b" }}>외 {restCount}개 단어</li> : null}
+      </ul>
+    </article>
   );
 }
 
@@ -1306,6 +1437,43 @@ const readingCountBadgeStyle = {
   fontWeight: 800,
   background: "#ede9fe",
   color: "#5b21b6",
+};
+
+const levelBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 800,
+  background: "#e0e7ff",
+  color: "#3730a3",
+};
+
+const vocaSetSectionTitleStyle = {
+  margin: "0 0 12px",
+  fontSize: 16,
+  fontWeight: 800,
+  color: "#312e81",
+};
+
+const vocaSetNameStyle = {
+  margin: "0 0 6px",
+  fontSize: 17,
+  fontWeight: 800,
+  color: "#0f172a",
+};
+
+const vocaSetMetaStyle = {
+  margin: "0 0 12px",
+  fontSize: 13,
+  color: "#64748b",
+};
+
+const vocaWordPreviewStyle = {
+  margin: 0,
+  paddingLeft: 18,
+  color: "#475569",
+  lineHeight: 1.7,
+  fontSize: 14,
 };
 
 const passagePreviewBoxStyle = {
