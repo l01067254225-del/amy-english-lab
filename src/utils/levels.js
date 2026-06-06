@@ -5,6 +5,7 @@ export const LEVEL_OPTIONS = [
   "A1-2",
   "PA1-1",
   "PA1-2",
+  "HB1-1",
   "HB1-2",
 ];
 
