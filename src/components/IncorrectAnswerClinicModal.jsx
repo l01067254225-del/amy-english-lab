@@ -1,23 +1,35 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QuestionCard from "./QuestionCard";
 import { shouldShowReadingPassage } from "../utils/examTakeView";
 import { gradeQuestion } from "../utils/grade";
 import {
+  canClinicRetest,
+  getClinicRetestAttemptCount,
+  getClinicRetestRemainingAttempts,
+  getClinicRetestSummary,
   getIncorrectQuestionItems,
-  isClinicRetestCompleted,
   saveClinicRetestResult,
+  CLINIC_RETEST_MAX_ATTEMPTS,
 } from "../utils/incorrectAnswerClinic";
 import {
   IncorrectAnswerCloseButton,
+  IncorrectAnswerRetryButton,
   IncorrectAnswerSubmitButton,
 } from "./IncorrectAnswerModalButtons";
 import { incorrectAnswerFooterStyle } from "./incorrectAnswerModalStyles";
 
 function buildInitialAnswers(result, items) {
-  if (!isClinicRetestCompleted(result)) return {};
+  const attemptCount = getClinicRetestAttemptCount(result);
+  if (attemptCount === 0) return {};
+
+  const latestItems = getClinicRetestSummary(result)
+    ? result.clinicRetest?.latestAttempt?.items ??
+      result.clinicRetest?.items ??
+      []
+    : [];
 
   const byQuestionId = new Map(
-    (result.clinicRetest?.items ?? []).map((item) => [item.questionId, item.userAnswer])
+    latestItems.map((item) => [item.questionId, item.userAnswer])
   );
 
   return Object.fromEntries(
@@ -33,23 +45,37 @@ export default function IncorrectAnswerClinicModal({
 }) {
   const items = useMemo(() => getIncorrectQuestionItems(result), [result]);
   const questions = useMemo(() => items.map((item) => item.question), [items]);
-  const alreadyCompleted = useMemo(() => isClinicRetestCompleted(result), [result]);
 
+  const [workingResult, setWorkingResult] = useState(result);
   const [answers, setAnswers] = useState(() => buildInitialAnswers(result, items));
-  const [submitted, setSubmitted] = useState(alreadyCompleted);
+  const [submitted, setSubmitted] = useState(() => getClinicRetestAttemptCount(result) > 0);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    setWorkingResult(result);
+  }, [result]);
+
+  const remainingAttempts = useMemo(
+    () => getClinicRetestRemainingAttempts(workingResult),
+    [workingResult]
+  );
+  const canRetry = useMemo(
+    () => submitted && canClinicRetest(workingResult),
+    [submitted, workingResult]
+  );
+
   const setAnswer = (qid, value) => {
-    if (submitted || alreadyCompleted) return;
+    if (submitted) return;
     setAnswers((prev) => ({ ...prev, [qid]: value }));
   };
 
   const handleSubmit = () => {
-    if (submitted || saving || alreadyCompleted) return;
+    if (submitted || saving || !canClinicRetest(workingResult)) return;
 
     setSaving(true);
     try {
-      const updated = saveClinicRetestResult(result, items, answers);
+      const updated = saveClinicRetestResult(workingResult, items, answers);
+      setWorkingResult(updated);
       setSubmitted(true);
       onSaved?.(updated);
     } finally {
@@ -57,13 +83,19 @@ export default function IncorrectAnswerClinicModal({
     }
   };
 
+  const handleRetry = () => {
+    if (!canRetry) return;
+    setSubmitted(false);
+  };
+
   const scoreSummary = useMemo(() => {
     if (!submitted) return null;
 
-    if (alreadyCompleted && result.clinicRetest) {
+    const summary = getClinicRetestSummary(workingResult);
+    if (summary) {
       return {
-        correct: Number(result.clinicRetest.correctCount ?? 0),
-        total: Number(result.clinicRetest.totalCount ?? items.length),
+        correct: summary.correctCount,
+        total: summary.totalCount,
       };
     }
 
@@ -74,7 +106,7 @@ export default function IncorrectAnswerClinicModal({
       }
     });
     return { correct, total: items.length };
-  }, [submitted, alreadyCompleted, result, items, answers]);
+  }, [submitted, workingResult, items, answers]);
 
   if (!result || items.length === 0) {
     return (
@@ -98,8 +130,8 @@ export default function IncorrectAnswerClinicModal({
               오답 노트 온라인 재응시
             </h2>
             <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
-              {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항
-              {alreadyCompleted ? " · 재응시 완료" : " · 1회만 응시 가능"}
+              {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항 · 최대{" "}
+              {CLINIC_RETEST_MAX_ATTEMPTS}회 · 남은 {remainingAttempts}회
             </p>
           </div>
         </div>
@@ -107,7 +139,11 @@ export default function IncorrectAnswerClinicModal({
         {submitted && scoreSummary && (
           <div style={summaryBannerStyle}>
             재응시 결과: {scoreSummary.correct}/{scoreSummary.total} 정답
-            {alreadyCompleted ? " (제출 완료 · 수정 불가)" : ""}
+            {canRetry
+              ? ` · 오답 문항이 남았습니다. 다시 풀기 (남은 횟수: ${remainingAttempts}회)`
+              : remainingAttempts <= 0
+                ? " · 재응시 횟수를 모두 사용했습니다."
+                : " · 모든 오답을 맞혔습니다!"}
           </div>
         )}
 
@@ -132,7 +168,12 @@ export default function IncorrectAnswerClinicModal({
               <IncorrectAnswerSubmitButton onClick={handleSubmit} disabled={saving} />
             </>
           ) : (
-            <IncorrectAnswerCloseButton onClick={onClose} />
+            <>
+              {canRetry && (
+                <IncorrectAnswerRetryButton onClick={handleRetry} />
+              )}
+              <IncorrectAnswerCloseButton onClick={onClose} />
+            </>
           )}
         </div>
       </div>

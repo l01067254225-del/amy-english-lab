@@ -4,10 +4,12 @@ import IncorrectAnswerPrintSheet, {
   triggerIncorrectNotePrint,
 } from "./IncorrectAnswerPrintSheet";
 import {
+  canClinicRetest,
   countIncorrectAnswers,
+  getClinicRetestButtonLabel,
   getClinicRetestSummary,
   getIncorrectItemsForPrint,
-  isClinicRetestCompleted,
+  isClinicRetestAllCorrect,
 } from "../utils/incorrectAnswerClinic";
 
 export default function IncorrectAnswerTools({
@@ -33,8 +35,16 @@ export default function IncorrectAnswerTools({
     () => getClinicRetestSummary(result),
     [result]
   );
-  const clinicCompleted = useMemo(
-    () => isClinicRetestCompleted(result),
+  const clinicAvailable = useMemo(
+    () => canClinicRetest(result),
+    [result]
+  );
+  const clinicButtonLabel = useMemo(
+    () => getClinicRetestButtonLabel(result, incorrectCount),
+    [result, incorrectCount]
+  );
+  const allCorrect = useMemo(
+    () => isClinicRetestAllCorrect(result),
     [result]
   );
 
@@ -50,7 +60,6 @@ export default function IncorrectAnswerTools({
 
   const handleClinicSaved = (updatedResult) => {
     onResultUpdate?.(updatedResult);
-    setClinicOpen(false);
   };
 
   return (
@@ -74,20 +83,25 @@ export default function IncorrectAnswerTools({
             오답 노트 다운로드 (인쇄)
           </button>
         )}
-        {showClinic && !clinicCompleted && (
+        {showClinic && clinicAvailable && (
           <button
             type="button"
             onClick={() => setClinicOpen(true)}
             style={clinicBtnStyle}
           >
-            오답 노트 온라인 재응시 ({incorrectCount}문항)
+            {clinicButtonLabel}
           </button>
         )}
-        {showClinic && clinicCompleted && (
+        {showClinic && !clinicAvailable && clinicRetestSummary && allCorrect && (
+          <p style={clinicSuccessStyle}>
+            온라인 재응시 완료 · 모든 오답을 맞혔습니다 (
+            {clinicRetestSummary.correctCount}/{clinicRetestSummary.totalCount} 정답)
+          </p>
+        )}
+        {showClinic && !clinicAvailable && clinicRetestSummary && !allCorrect && (
           <p style={clinicDoneStyle}>
-            온라인 재응시 완료 ({clinicRetestSummary?.correctCount ?? 0}/
-            {clinicRetestSummary?.totalCount ?? incorrectCount} 정답) · 1회 제한으로
-            재응시할 수 없습니다.
+            재응시 횟수를 모두 사용했습니다 · 최종{" "}
+            {clinicRetestSummary.correctCount}/{clinicRetestSummary.totalCount} 정답
           </p>
         )}
       </div>
@@ -101,7 +115,7 @@ export default function IncorrectAnswerTools({
         />
       )}
 
-      {clinicOpen && !clinicCompleted && (
+      {clinicOpen && clinicAvailable && (
         <IncorrectAnswerClinicModal
           result={result}
           studentName={studentName}
@@ -135,10 +149,17 @@ const clinicDoneStyle = {
   margin: 0,
   padding: "10px 14px",
   borderRadius: 10,
-  background: "#f1f5f9",
-  border: "1px solid #e2e8f0",
-  color: "#64748b",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  color: "#991b1b",
   fontSize: 13,
   fontWeight: 600,
   lineHeight: 1.5,
+};
+
+const clinicSuccessStyle = {
+  ...clinicDoneStyle,
+  background: "#ecfdf5",
+  borderColor: "#bbf7d0",
+  color: "#047857",
 };

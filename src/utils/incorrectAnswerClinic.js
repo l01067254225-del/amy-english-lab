@@ -11,6 +11,12 @@ export {
   saveClinicRetestResult,
   getClinicRetestSummary,
   enrichIncorrectItemsWithClinic,
+  canClinicRetest,
+  getClinicRetestRemainingAttempts,
+  getClinicRetestAttemptCount,
+  getClinicRetestButtonLabel,
+  isClinicRetestAllCorrect,
+  CLINIC_RETEST_MAX_ATTEMPTS,
 } from "./clinicRetestStorage";
 
 export function getExamByTestId(testId) {

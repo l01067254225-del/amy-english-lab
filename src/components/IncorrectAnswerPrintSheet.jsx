@@ -56,7 +56,7 @@ export default function IncorrectAnswerPrintSheet({
           <p style={metaStyle}>
             총 {safeItems.length}문항
             {hasClinicRetest
-              ? ` · 온라인 재응시 ${clinicRetestSummary.correctCount}/${clinicRetestSummary.totalCount} 정답 (${retestFixedCount}문항 복습 완료)`
+              ? ` · 온라인 재응시 ${clinicRetestSummary.attemptCount}/${clinicRetestSummary.maxAttempts}회 · ${clinicRetestSummary.correctCount}/${clinicRetestSummary.totalCount} 정답 (${retestFixedCount}문항 복습 완료)`
               : " · 연필로 다시 풀어 보세요"}
           </p>
         </header>
