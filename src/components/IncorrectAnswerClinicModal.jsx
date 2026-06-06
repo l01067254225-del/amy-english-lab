@@ -30,6 +30,10 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
     setSubmitted(false);
   };
 
+  const handleClearAnswers = () => {
+    setAnswers({});
+  };
+
   const scoreSummary = useMemo(() => {
     if (!submitted) return null;
     let correct = 0;
@@ -68,6 +72,11 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
               {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항
             </p>
           </div>
+          {!submitted ? (
+            <button type="button" onClick={handleSubmit} style={incorrectAnswerPrimaryBtnStyle}>
+              제출
+            </button>
+          ) : null}
         </div>
 
         {submitted && scoreSummary && (
@@ -91,18 +100,16 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         </div>
 
         <div style={incorrectAnswerFooterStyle}>
+          <button
+            type="button"
+            onClick={submitted ? handleRetry : handleClearAnswers}
+            style={incorrectAnswerSecondaryBtnStyle}
+          >
+            다시 풀기
+          </button>
           <button type="button" onClick={onClose} style={incorrectAnswerCloseBtnStyle}>
             닫기
           </button>
-          {!submitted ? (
-            <button type="button" onClick={handleSubmit} style={incorrectAnswerPrimaryBtnStyle}>
-              제출
-            </button>
-          ) : (
-            <button type="button" onClick={handleRetry} style={incorrectAnswerSecondaryBtnStyle}>
-              다시 풀기
-            </button>
-          )}
         </div>
       </div>
     </div>
