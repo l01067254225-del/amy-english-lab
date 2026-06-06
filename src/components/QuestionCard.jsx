@@ -1,4 +1,5 @@
 import { getAnswerFeedback, gradeQuestion } from "../utils/grade";
+import { getVocaQuestionGuide } from "../utils/vocaExamBuilder";
 import SentenceArrange from "./SentenceArrange";
 
 export default function QuestionCard({
@@ -11,6 +12,14 @@ export default function QuestionCard({
   showWordBank,
 }) {
   const earned = submitted ? gradeQuestion(question, userAnswer) : null;
+  const vocaGuide =
+    question.subject === "vocab" ? getVocaQuestionGuide(question.type) : "";
+  const inputPlaceholder =
+    question.type === "spelling"
+      ? "영어 철자 입력"
+      : question.type === "meaning"
+        ? "한글 뜻 입력"
+        : "정답 입력";
 
   return (
     <div
@@ -102,6 +111,11 @@ export default function QuestionCard({
         }}
       >
         <div style={{ fontWeight: 700 }}>
+          {vocaGuide ? (
+            <div style={{ fontSize: 13, color: "#4338ca", marginBottom: 6, fontWeight: 700 }}>
+              {vocaGuide}
+            </div>
+          ) : null}
           Q{index + 1}. {question.prompt}
         </div>
         {submitted && (
@@ -180,7 +194,7 @@ export default function QuestionCard({
       ) : (
         <input
           type="text"
-          placeholder={question.type === "spelling" ? "영어 철자 입력" : "정답 입력"}
+          placeholder={inputPlaceholder}
           value={userAnswer}
           disabled={submitted}
           onChange={(e) => onAnswer(question.id, e.target.value)}

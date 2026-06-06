@@ -60,7 +60,12 @@ function applyReadingFields(item, subject, passage, passageId) {
 }
 
 export function normalizeQuestion(question) {
-  const type = question.type === "objective" ? "objective" : "subjective";
+  const type =
+    question.type === "objective"
+      ? "objective"
+      : question.type === "meaning" || question.type === "spelling"
+        ? question.type
+        : "subjective";
   const options =
     type === "objective" && Array.isArray(question.options)
       ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())

@@ -9,7 +9,7 @@ import {
   SUBJECT_OPTIONS,
 } from "../../utils/questionBankStorage";
 import { formatTestDate, getTodayDateString, LEVEL_OPTIONS } from "../../utils/levels";
-import { buildVocaExamQuestions, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
+import { buildVocaExamQuestions, getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
 import {
   collectWordsFromVocaSets,
   filterVocaSetsByLevel,
@@ -501,7 +501,15 @@ export default function TeacherExamBuilderTab() {
                 ))}
               </div>
               <p style={vocaOptionHintStyle}>
-                선택한 세트에서 무작위로 {vocaDrawCount || "—"}개를 추출해 시험지를 만듭니다.
+                {vocaExamType === "mix" ? (
+                  <>
+                    혼합 모드: 총 {vocaDrawCount || "—"}문항 중 뜻 쓰기{" "}
+                    {getMixExamBreakdown(vocaDrawCount).meaningCount}개 + 철자 쓰기{" "}
+                    {getMixExamBreakdown(vocaDrawCount).spellingCount}개를 무작위로 섞어 출제합니다.
+                  </>
+                ) : (
+                  <>선택한 세트에서 무작위로 {vocaDrawCount || "—"}개를 추출해 시험지를 만듭니다.</>
+                )}
               </p>
             </div>
           </div>

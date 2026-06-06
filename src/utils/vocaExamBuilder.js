@@ -5,7 +5,57 @@ import { shuffleArray } from "./shuffle";
 export const VOCA_EXAM_TYPES = [
   { id: "meaning", label: "뜻 쓰기", description: "영어 단어 → 한글 뜻 입력" },
   { id: "spelling", label: "철자(Spelling) 쓰기", description: "한글 뜻 → 영어 철자 입력" },
+  {
+    id: "mix",
+    label: "혼합(Mix) 모드",
+    description: "뜻 쓰기 + 철자 쓰기를 섞어서 무작위 출제",
+  },
 ];
+
+export function getVocaQuestionGuide(vocaType) {
+  if (vocaType === "spelling") return "다음 뜻에 해당하는 영어 철자를 쓰세요.";
+  if (vocaType === "meaning") return "다음 단어의 뜻을 쓰세요.";
+  return "";
+}
+
+function buildSingleVocaQuestion(entry, vocaType) {
+  const word = String(entry.word ?? "").trim();
+  const mean = String(entry.mean ?? entry.meaning ?? "").trim();
+
+  if (vocaType === "spelling") {
+    return {
+      id: createQuestionId(),
+      type: "spelling",
+      subject: "vocab",
+      prompt: mean,
+      answer: word,
+      options: [],
+    };
+  }
+
+  return {
+    id: createQuestionId(),
+    type: "meaning",
+    subject: "vocab",
+    prompt: word,
+    answer: mean,
+    options: [],
+  };
+}
+
+function buildMixVocaQuestions(selectedWords) {
+  const count = selectedWords.length;
+  const meaningCount = Math.ceil(count / 2);
+  const meaningWords = selectedWords.slice(0, meaningCount);
+  const spellingWords = selectedWords.slice(meaningCount);
+
+  const meaningQuestions = meaningWords.map((entry) => buildSingleVocaQuestion(entry, "meaning"));
+  const spellingQuestions = spellingWords.map((entry) =>
+    buildSingleVocaQuestion(entry, "spelling")
+  );
+
+  return shuffleArray([...meaningQuestions, ...spellingQuestions]);
+}
 
 export function buildVocaExamQuestions(words, { examType = "meaning", drawCount } = {}) {
   const pool = ensureUniqueWords(words);
@@ -19,30 +69,11 @@ export function buildVocaExamQuestions(words, { examType = "meaning", drawCount 
 
   const selected = shuffleArray(pool).slice(0, count);
 
-  return selected.map((entry) => {
-    const word = String(entry.word ?? "").trim();
-    const mean = String(entry.mean ?? entry.meaning ?? "").trim();
+  if (examType === "mix") {
+    return buildMixVocaQuestions(selected);
+  }
 
-    if (examType === "spelling") {
-      return {
-        id: createQuestionId(),
-        type: "subjective",
-        subject: "vocab",
-        prompt: mean,
-        answer: word,
-        options: [],
-      };
-    }
-
-    return {
-      id: createQuestionId(),
-      type: "subjective",
-      subject: "vocab",
-      prompt: word,
-      answer: mean,
-      options: [],
-    };
-  });
+  return selected.map((entry) => buildSingleVocaQuestion(entry, examType));
 }
 
 function ensureUniqueWords(words) {
@@ -61,4 +92,13 @@ function ensureUniqueWords(words) {
   });
 
   return unique;
+}
+
+export function getMixExamBreakdown(drawCount) {
+  const count = Math.max(0, Math.floor(Number(drawCount) || 0));
+  return {
+    meaningCount: Math.ceil(count / 2),
+    spellingCount: Math.floor(count / 2),
+    total: count,
+  };
 }
