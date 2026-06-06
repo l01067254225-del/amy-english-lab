@@ -209,7 +209,7 @@ export default function StudentExamTake({
       const next =
         isRetest && retestResultId
           ? await replaceResult(retestResultId, { ...payload, answers })
-          : await saveResult(record);
+          : await saveResult({ ...payload, answers });
 
       const mine = next.filter(
         (r) => r.studentId === studentKey || r.studentName === studentKey

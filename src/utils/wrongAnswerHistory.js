@@ -161,16 +161,98 @@ export function getWrongAttemptLogsForQuestion(result, questionId) {
 }
 
 export function formatAttemptLabel(log) {
-  const attemptNumber = Number(log?.attemptNumber ?? 1);
-  const attemptType = log?.attemptType ?? ATTEMPT_TYPES.EXAM;
+  return formatSessionLabel({
+    attemptNumber: log?.attemptNumber,
+    attemptType: log?.attemptType,
+  });
+}
+
+/** 관리자 상세 — [1차 응시], [재시험 1] 등 응시 단계 라벨 */
+export function formatSessionLabel(attemptRecord, allAttempts = []) {
+  const attemptType = attemptRecord?.attemptType ?? ATTEMPT_TYPES.EXAM;
+  const attemptNumber = Number(attemptRecord?.attemptNumber ?? 1);
 
   if (attemptType === ATTEMPT_TYPES.CLINIC) {
-    return `오답 노트 (${attemptNumber}회)`;
+    const clinicIndex = ensureArray(allAttempts).filter(
+      (item) =>
+        item?.attemptType === ATTEMPT_TYPES.CLINIC &&
+        Number(item?.attemptNumber ?? 0) <= attemptNumber
+    ).length;
+    return clinicIndex > 0 ? `오답 노트 (${clinicIndex}회)` : "오답 노트";
   }
+
   if (attemptType === ATTEMPT_TYPES.RETEST || attemptNumber > 1) {
-    return `${attemptNumber}차 시험`;
+    return `재시험 ${Math.max(1, attemptNumber - 1)}`;
   }
-  return "1차 시험";
+
+  return "1차 응시";
+}
+
+export function sortTestAttempts(attempts) {
+  return [...ensureArray(attempts)].sort((a, b) => {
+    const numDiff = Number(a?.attemptNumber ?? 0) - Number(b?.attemptNumber ?? 0);
+    if (numDiff !== 0) return numDiff;
+
+    const idDiff = String(a?.attempt_id ?? "").localeCompare(String(b?.attempt_id ?? ""), undefined, {
+      numeric: true,
+    });
+    if (idDiff !== 0) return idDiff;
+
+    return logTimestamp({ submittedAt: a?.submittedAt }) - logTimestamp({ submittedAt: b?.submittedAt });
+  });
+}
+
+/** 세션 스냅샷 — test_attempts.attempt_logs 원본만 (results.details 폴백 없음) */
+export function getSessionAttemptLogs(session) {
+  return sortAttemptLogs(session?.attempt_logs ?? session?.answer_logs ?? []);
+}
+
+function groupFlatLogsIntoSessions(logs) {
+  const byAttemptId = new Map();
+
+  sortAttemptLogs(logs).forEach((log) => {
+    const attemptId = normalizeAttemptId(log);
+    if (!byAttemptId.has(attemptId)) {
+      byAttemptId.set(attemptId, {
+        attempt_id: attemptId,
+        attemptNumber: log.attemptNumber,
+        attemptType: log.attemptType,
+        submittedAt: log.submittedAt,
+        attempt_logs: [],
+      });
+    }
+    byAttemptId.get(attemptId).attempt_logs.push(log);
+  });
+
+  return sortTestAttempts([...byAttemptId.values()]);
+}
+
+/**
+ * results 테이블과 분리된 test_attempts / attempt_logs 기준 응시 세션 목록
+ * 각 세션의 답안은 해당 attempt_logs 스냅샷에서만 조회
+ */
+export function getResultAttemptSessions(result) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const testAttempts = sortTestAttempts(getTestAttempts(synced));
+
+  if (testAttempts.length > 0) {
+    return testAttempts.map((attempt) => ({
+      ...attempt,
+      label: formatSessionLabel(attempt, testAttempts),
+      logs: getSessionAttemptLogs(attempt),
+    }));
+  }
+
+  const grouped = groupFlatLogsIntoSessions(getAttemptLogs(synced));
+  return grouped.map((attempt) => ({
+    ...attempt,
+    label: formatSessionLabel(attempt, grouped),
+    logs: getSessionAttemptLogs(attempt),
+  }));
+}
+
+export function isAttemptLogCorrect(log) {
+  return normalizeIsCorrect(log);
 }
 
 /** attempt_id / attemptNumber 기준 시점별 오답 목록 */

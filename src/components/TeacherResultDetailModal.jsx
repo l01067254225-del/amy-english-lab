@@ -1,5 +1,8 @@
 import { formatDate } from "../services/resultsApi";
-import { buildResultDetailRows, hasMultiAttemptHistory } from "../utils/resultDetailView";
+import {
+  buildSessionBasedDetailView,
+  hasSessionBasedHistory,
+} from "../utils/resultDetailView";
 import { formatLevelLabel } from "../utils/levels";
 
 function ResultMark({ correct }) {
@@ -24,17 +27,14 @@ function AnswerCell({ text, variant = "neutral" }) {
     correct: answerCorrectStyle,
   };
 
-  return <span style={styles[variant] ?? answerNeutralStyle}>{text}</span>;
+  return <span style={styles[variant] ?? answerNeutralStyle}>{text || "—"}</span>;
 }
 
 export default function TeacherResultDetailModal({ result, studentLevel, onClose }) {
   if (!result) return null;
 
-  const rows = buildResultDetailRows(result);
-  const showAttemptHistory = hasMultiAttemptHistory(result);
-  const percent =
-    result.total > 0 ? Math.round((Number(result.score) / Number(result.total)) * 100) : 0;
-  const hasWrongRows = rows.some((row) => !row.correct);
+  const { sessions, summary } = buildSessionBasedDetailView(result);
+  const hasMultipleSessions = hasSessionBasedHistory(result);
 
   return (
     <div style={overlayStyle} onClick={onClose}>
@@ -54,93 +54,98 @@ export default function TeacherResultDetailModal({ result, studentLevel, onClose
         </div>
 
         <div style={summaryRowStyle}>
-          <span style={summaryChipStyle}>{formatDate(result.submittedAt)}</span>
           <span style={summaryChipStyle}>
-            {result.score}/{result.total}점 ({percent}%)
+            최종 제출: {formatDate(summary?.submittedAt ?? result.submittedAt)}
           </span>
-          {result.attemptCount > 1 && (
-            <span style={summaryChipStyle}>{result.attemptCount}회차</span>
+          <span style={summaryChipStyle}>
+            최종 점수 {summary?.score ?? result.score}/{summary?.total ?? result.total}점 (
+            {summary?.percent ?? 0}%)
+          </span>
+          {(summary?.attemptCount ?? 1) > 1 && (
+            <span style={summaryChipStyle}>{summary.attemptCount}회 응시</span>
           )}
+          <span style={dataSourceChipStyle}>데이터 출처: attempt_logs</span>
         </div>
 
-        {showAttemptHistory && (
-          <p style={historyHintStyle}>
-            「틀렸던 답안」은 attempt_logs에서 is_correct=false인 기록만 attempt_id(응시
-            회차) 순으로 표시합니다. 「최종 답안」은 마지막 제출본입니다.
+        <p style={historyHintStyle}>
+          각 응시 단계의 답안은 results 테이블이 아닌 <strong>attempt_logs</strong> 스냅샷에서
+          그대로 불러옵니다. 1차 시험에서 부분만 작성한 답안도 덮어쓰기 없이 표시됩니다.
+        </p>
+
+        {sessions.length === 0 ? (
+          <p style={{ margin: "16px 0 0", color: "#64748b" }}>
+            응시 로그(attempt_logs)가 없어 상세 답안을 표시할 수 없습니다.
           </p>
-        )}
-
-        <h3 style={sectionTitleStyle}>문제별 상세 답안</h3>
-
-        <div style={tableWrapStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>문제 번호</th>
-                <th style={thStyle}>문제 내용</th>
-                <th style={thStyle}>틀렸던 답안</th>
-                <th style={thStyle}>최종 답안</th>
-                <th style={thStyle}>정답</th>
-                <th style={{ ...thStyle, textAlign: "center", width: 96 }}>정오답</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={`${row.questionId ?? "q"}-${row.num}`}
-                  style={row.correct ? null : wrongRowStyle}
-                >
-                  <td style={tdStyle}>
-                    <strong>Q{row.num}</strong>
-                    {row.examRetestPassed && (
-                      <span style={retestPassedTagStyle}>재시험 통과</span>
+        ) : (
+          sessions.map((session, sessionIndex) => (
+            <section key={session.attemptId ?? session.label} style={sessionSectionStyle}>
+              <div style={sessionHeaderStyle}>
+                <div>
+                  <h3 style={sessionTitleStyle}>
+                    {session.label}
+                    {hasMultipleSessions && (
+                      <span style={sessionIndexStyle}> · {sessionIndex + 1}번째 기록</span>
                     )}
-                  </td>
-                  <td style={tdStyle}>{row.prompt}</td>
-                  <td style={tdStyle}>
-                    {row.wrongAttemptDisplays?.length > 0 ? (
-                      <div style={attemptStackStyle}>
-                        {row.wrongAttemptDisplays.map((attempt) => (
-                          <div key={attempt.attemptId} style={attemptLineStyle}>
-                            <span style={attemptLabelStyle}>{attempt.label}</span>
-                            <AnswerCell text={attempt.userAnswer} variant="wrong" />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ color: "#94a3b8" }}>—</span>
-                    )}
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={compareRowStyle}>
-                      <AnswerCell
-                        text={row.latestStudentAnswer}
-                        variant={row.correct ? "correct" : "wrong"}
-                      />
-                    </div>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={compareRowStyle}>
-                      <AnswerCell text={row.correctAnswer} variant="correct" />
-                    </div>
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "center" }}>
-                    <ResultMark correct={row.correct} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </h3>
+                  <p style={sessionMetaStyle}>
+                    {formatDate(session.submittedAt)} · {session.score}/{session.total}점 ·
+                    attempt_id: {session.attemptId ?? "—"}
+                  </p>
+                </div>
+              </div>
 
-        {rows.length === 0 && (
-          <p style={{ margin: "16px 0 0", color: "#64748b" }}>문항별 상세 데이터가 없습니다.</p>
-        )}
+              <div style={tableWrapStyle}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>문제 번호</th>
+                      <th style={thStyle}>문제 내용</th>
+                      <th style={thStyle}>제출 답안 (로그 원본)</th>
+                      <th style={thStyle}>정답</th>
+                      <th style={{ ...thStyle, textAlign: "center", width: 96 }}>정오답</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {session.rows.map((row) => (
+                      <tr
+                        key={`${session.attemptId}-${row.questionId ?? row.num}`}
+                        style={row.isCorrect === false ? wrongRowStyle : null}
+                      >
+                        <td style={tdStyle}>
+                          <strong>Q{row.num ?? "—"}</strong>
+                        </td>
+                        <td style={tdStyle}>{row.prompt}</td>
+                        <td style={tdStyle}>
+                          <AnswerCell
+                            text={row.userAnswer}
+                            variant={
+                              row.isCorrect === false
+                                ? "wrong"
+                                : row.isCorrect === true
+                                  ? "correct"
+                                  : "neutral"
+                            }
+                          />
+                        </td>
+                        <td style={tdStyle}>
+                          <AnswerCell text={row.correctAnswer} variant="correct" />
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "center" }}>
+                          <ResultMark correct={row.isCorrect === true} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-        {hasWrongRows && (
-          <p style={legendStyle}>
-            틀렸던 답안(빨간색) · 최종 답안 · 정답(초록색)을 나란히 비교할 수 있습니다.
-          </p>
+              {session.rows.length === 0 && (
+                <p style={{ margin: "12px 0 0", color: "#64748b", fontSize: 13 }}>
+                  이 응시 단계에 저장된 attempt_logs가 없습니다.
+                </p>
+              )}
+            </section>
+          ))
         )}
       </div>
     </div>
@@ -204,22 +209,55 @@ const summaryChipStyle = {
   fontWeight: 700,
 };
 
-const historyHintStyle = {
-  margin: "0 0 12px",
-  padding: "10px 12px",
-  borderRadius: 10,
+const dataSourceChipStyle = {
+  ...summaryChipStyle,
   background: "#eff6ff",
   border: "1px solid #bfdbfe",
   color: "#1d4ed8",
+};
+
+const historyHintStyle = {
+  margin: "0 0 20px",
+  padding: "10px 12px",
+  borderRadius: 10,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  color: "#475569",
   fontSize: 13,
   lineHeight: 1.6,
 };
 
-const sectionTitleStyle = {
-  margin: "0 0 12px",
-  fontSize: 16,
+const sessionSectionStyle = {
+  marginBottom: 28,
+  paddingBottom: 24,
+  borderBottom: "2px solid #e2e8f0",
+};
+
+const sessionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  marginBottom: 12,
+};
+
+const sessionTitleStyle = {
+  margin: 0,
+  fontSize: 17,
   fontWeight: 800,
   color: "#0f172a",
+};
+
+const sessionIndexStyle = {
+  fontSize: 14,
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const sessionMetaStyle = {
+  margin: "4px 0 0",
+  fontSize: 13,
+  color: "#64748b",
 };
 
 const tableWrapStyle = {
@@ -271,6 +309,8 @@ const answerNeutralStyle = {
   borderRadius: 6,
   background: "#f8fafc",
   border: "1px solid #e2e8f0",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
 
 const answerWrongStyle = {
@@ -287,51 +327,4 @@ const answerCorrectStyle = {
   border: "1px solid #bbf7d0",
   color: "#047857",
   fontWeight: 700,
-};
-
-const compareRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const compareArrowStyle = {
-  color: "#94a3b8",
-  fontWeight: 800,
-  fontSize: 16,
-};
-
-const attemptStackStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const attemptLineStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const attemptLabelStyle = {
-  minWidth: 72,
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#64748b",
-};
-
-const retestPassedTagStyle = {
-  display: "block",
-  marginTop: 4,
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#047857",
-};
-
-const legendStyle = {
-  margin: "14px 0 0",
-  fontSize: 12,
-  color: "#64748b",
 };
