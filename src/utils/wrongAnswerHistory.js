@@ -355,7 +355,63 @@ export function resolveFirstExamAnswer(result, { questionId, num } = {}) {
     is_correct: gradingCorrect,
     source: null,
     attemptNumber: FIRST_ATTEMPT_NUMBER,
+    recovery: false,
   };
+}
+
+/** 1차 미조회 시 가장 최 recent attempt에서 복구 */
+export function resolveFirstExamAnswerWithRecovery(result, { questionId, num } = {}) {
+  const primary = resolveFirstExamAnswer(result, { questionId, num });
+  if (primary.status === "found") {
+    return { ...primary, recovery: false };
+  }
+
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const detail = findDetailForQuestion(synced, { questionId, num });
+  const gradingCorrect = detail?.correct === true ? true : detail?.correct === false ? false : null;
+
+  const recover = (user_answer, is_correct, source, attemptNumber) => ({
+    status: "recovering",
+    user_answer: preserveRawSubmittedAnswer(user_answer),
+    is_correct: is_correct ?? gradingCorrect,
+    source,
+    attemptNumber,
+    recovery: true,
+    recoveryFromAttempt: attemptNumber,
+  });
+
+  const sessions = buildAttemptHistoryFromResult(synced)
+    .filter((item) => item.attempt_type !== ATTEMPT_TYPES.CLINIC)
+    .sort((a, b) => Number(b.attempt_number) - Number(a.attempt_number));
+
+  for (const session of sessions) {
+    if (Number(session.attempt_number) === FIRST_ATTEMPT_NUMBER) continue;
+
+    const record = findAttemptLogForQuestion(session.records, { questionId, num });
+    if (record) {
+      return recover(record.user_answer, record.is_correct, "recent_attempt_history", session.attempt_number);
+    }
+  }
+
+  const recentLog = getAttemptLogs(synced)
+    .filter((log) => matchAttemptLogToQuestion(log, { questionId, num }))
+    .sort(
+      (a, b) =>
+        Number(b.attempt_number ?? b.attemptNumber ?? 0) -
+        Number(a.attempt_number ?? a.attemptNumber ?? 0)
+    )[0];
+
+  if (recentLog) {
+    const attemptNumber = Number(recentLog.attempt_number ?? recentLog.attemptNumber ?? 1);
+    return recover(
+      readRawUserAnswerFromLog(recentLog),
+      normalizeIsCorrect(recentLog),
+      "recent_attempt_logs",
+      attemptNumber
+    );
+  }
+
+  return { ...primary, recovery: false };
 }
 
 export function getFirstAttemptSession(result) {

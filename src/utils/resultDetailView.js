@@ -1,12 +1,13 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { formatStoredUserAnswer } from "./examRetestStorage";
+import { debugLogAttemptLogsIfEmpty } from "./resultDetailLoader";
 import {
   FIRST_ATTEMPT_NUMBER,
   FIRST_EXAM_ANSWER_COLUMN_LABEL,
   getFirstAttemptSession,
   isUserAnswerPresent,
-  resolveFirstExamAnswer,
+  resolveFirstExamAnswerWithRecovery,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
@@ -38,25 +39,27 @@ function buildQuestionMetaMap(result) {
 }
 
 function buildAnswerCell(resolved, question) {
-  const hasRecord = resolved.status === "found";
+  const hasRecord = resolved.status === "found" || resolved.status === "recovering";
   const rawUserAnswer = resolved.user_answer;
 
   return {
     userAnswer: hasRecord ? formatStoredUserAnswer(question, rawUserAnswer) : null,
     rawUserAnswer: hasRecord ? rawUserAnswer : null,
     isCorrect: resolved.is_correct ?? null,
-    status: hasRecord ? "found" : "missing",
+    status: resolved.status,
     source: resolved.source,
+    recovery: Boolean(resolved.recovery),
+    recoveryFromAttempt: resolved.recoveryFromAttempt ?? null,
     isEmptyString: hasRecord && rawUserAnswer === "",
   };
 }
 
 /**
- * attempt_number = 1 만 — 1차 시험 답안 단일 컬럼
+ * attempt_number = 1 우선, 없으면 최근 응시 기록으로 복구
  */
 export function buildAttemptWiseDetailView(result) {
   if (!result) {
-    return { column: null, rows: [], isReady: false };
+    return { column: null, rows: [], isReady: false, hasRecovery: false };
   }
 
   const { synced, questions, metaByQuestionId } = buildQuestionMetaMap(result);
@@ -68,6 +71,7 @@ export function buildAttemptWiseDetailView(result) {
     submittedAt: firstSession?.submitted_at ?? synced.submittedAt,
     score: firstSession?.score ?? synced.score,
     total: firstSession?.total ?? synced.total,
+    lookupKey: synced._detailLoadMeta?.lookupKey ?? null,
   };
 
   const detailRows = ensureArray(synced.details);
@@ -79,6 +83,8 @@ export function buildAttemptWiseDetailView(result) {
           num: record.num,
         }));
 
+  let hasRecovery = false;
+
   const rows = rowSource
     .map((detail) => {
       const questionKey =
@@ -89,8 +95,9 @@ export function buildAttemptWiseDetailView(result) {
       const questionId = detail.questionId ?? meta?.questionId;
       const num = detail.num ?? meta?.num;
 
-      const resolved = resolveFirstExamAnswer(synced, { questionId, num });
+      const resolved = resolveFirstExamAnswerWithRecovery(synced, { questionId, num });
       const firstExamAnswer = buildAnswerCell(resolved, question);
+      if (firstExamAnswer.recovery) hasRecovery = true;
 
       return {
         num,
@@ -104,9 +111,13 @@ export function buildAttemptWiseDetailView(result) {
     })
     .sort((a, b) => Number(a.num ?? 0) - Number(b.num ?? 0));
 
-  const isReady = rows.some((row) => row.firstExamAnswer?.status === "found");
+  const isReady = rows.some(
+    (row) => row.firstExamAnswer?.status === "found" || row.firstExamAnswer?.status === "recovering"
+  );
 
-  return { column, rows, isReady };
+  const view = { column, rows, isReady, hasRecovery };
+  debugLogAttemptLogsIfEmpty(synced, view);
+  return view;
 }
 
 /** @deprecated 항상 false — 관리자 상세는 1차만 표시 */

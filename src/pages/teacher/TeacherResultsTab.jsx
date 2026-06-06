@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import IncorrectAnswerNoteModal from "../../components/IncorrectAnswerNoteModal";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
 import TeacherResultDetailModal from "../../components/TeacherResultDetailModal";
-import { fetchResultById } from "../../services/resultsApi";
+import { fetchResultDetailByStudentDate } from "../../services/resultsApi";
 import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
 import {
   buildDailySmsText,
@@ -101,7 +101,15 @@ export default function TeacherResultsTab({
 
     (async () => {
       try {
-        const fresh = await fetchResultById(detailTarget.id, { cache: "no-store" });
+        const fresh = await fetchResultDetailByStudentDate(
+          {
+            studentId: detailTarget.studentId,
+            studentName: detailTarget.studentName,
+            submittedAt: detailTarget.submittedAt,
+            resultId: detailTarget.id,
+          },
+          { cache: "no-store" }
+        );
         if (cancelled) return;
         if (fresh) setDetailTarget(fresh);
       } finally {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchResultById, formatDate } from "../services/resultsApi";
+import { fetchResultDetailByStudentDate, formatDate } from "../services/resultsApi";
+import { getResultDateKey } from "../utils/resultDetailLoader";
 import { buildAttemptWiseDetailView } from "../utils/resultDetailView";
 import { formatLevelLabel } from "../utils/levels";
 
@@ -28,6 +29,7 @@ function AnswerCell({ answer, variant = "neutral" }) {
     empty: answerEmptyStyle,
     missing: answerMissingStyle,
     loading: answerLoadingStyle,
+    recovering: answerRecoveringStyle,
   };
 
   if (!answer || answer.status === "loading") {
@@ -36,6 +38,24 @@ function AnswerCell({ answer, variant = "neutral" }) {
 
   if (answer.status === "missing") {
     return <span style={styles.missing}>답안 기록 없음</span>;
+  }
+
+  if (answer.status === "recovering") {
+    return (
+      <div style={recoveryWrapStyle}>
+        <span style={styles.recovering}>기록 복구 중</span>
+        {answer.isEmptyString ? (
+          <span style={styles.empty} title="학생이 빈 문자열을 제출함">
+            (빈 답안)
+          </span>
+        ) : (
+          <span style={styles[variant] ?? answerNeutralStyle}>{answer.userAnswer ?? ""}</span>
+        )}
+        {answer.recoveryFromAttempt && (
+          <span style={recoveryTagStyle}>{answer.recoveryFromAttempt}회차 기록</span>
+        )}
+      </div>
+    );
   }
 
   if (answer.isEmptyString) {
@@ -65,11 +85,19 @@ export default function TeacherResultDetailModal({
   }, [initialResult]);
 
   const reloadResult = useCallback(async () => {
-    if (!initialResult?.id) return;
+    if (!initialResult) return;
 
     setFetchState("loading");
     try {
-      const fresh = await fetchResultById(initialResult.id, { cache: "no-store" });
+      const fresh = await fetchResultDetailByStudentDate(
+        {
+          studentId: initialResult.studentId ?? initialResult.student_id,
+          studentName: initialResult.studentName,
+          submittedAt: initialResult.submittedAt,
+          resultId: initialResult.id,
+        },
+        { cache: "no-store" }
+      );
       if (fresh) {
         setResult(fresh);
         setFetchState("ready");
@@ -79,7 +107,12 @@ export default function TeacherResultDetailModal({
     } catch {
       setFetchState("error");
     }
-  }, [initialResult?.id]);
+  }, [
+    initialResult?.id,
+    initialResult?.studentId,
+    initialResult?.studentName,
+    initialResult?.submittedAt,
+  ]);
 
   useEffect(() => {
     reloadResult();
@@ -94,7 +127,7 @@ export default function TeacherResultDetailModal({
     return buildAttemptWiseDetailView(result);
   }, [result, isLoading]);
 
-  const { column, rows, isReady } = detailView;
+  const { column, rows, isReady, hasRecovery } = detailView;
 
   if (!initialResult) return null;
 
@@ -127,7 +160,10 @@ export default function TeacherResultDetailModal({
               </span>
             )
           )}
-          <span style={dataSourceChipStyle}>attempt_number = 1</span>
+          <span style={dataSourceChipStyle}>
+            {column?.lookupKey ??
+              `${initialResult.studentId ?? initialResult.studentName}@${getResultDateKey(initialResult.submittedAt)}`}
+          </span>
           {fetchState === "error" && (
             <button
               type="button"
@@ -140,9 +176,9 @@ export default function TeacherResultDetailModal({
         </div>
 
         <p style={historyHintStyle}>
-          <strong>1차 시험 답안</strong>만 표시합니다. attempt_logs · answers join 시{" "}
-          <code>attempt_number = 1</code> 조건을 최우선 적용하며, 정오답과 무관하게 제출
-          user_answer를 그대로 출력합니다.
+          <strong>student_id + date</strong> 복합 키로 attempt_logs를 조회합니다. 1차 시험(
+          <code>attempt_number = 1</code>) 데이터가 없으면 가장 최근 응시 기록으로 복구합니다.
+          답안이 비어 있으면 브라우저 콘솔(F12)에 attempt_logs 전체가 출력됩니다.
         </p>
 
         {isLoading ? (
@@ -185,11 +221,13 @@ export default function TeacherResultDetailModal({
                         <AnswerCell
                           answer={answer}
                           variant={
-                            answer.isCorrect === false
-                              ? "wrong"
-                              : answer.isCorrect === true
-                                ? "correct"
-                                : "neutral"
+                            answer.status === "recovering"
+                              ? "neutral"
+                              : answer.isCorrect === false
+                                ? "wrong"
+                                : answer.isCorrect === true
+                                  ? "correct"
+                                  : "neutral"
                           }
                         />
                       </td>
@@ -212,6 +250,12 @@ export default function TeacherResultDetailModal({
               </tbody>
             </table>
           </div>
+        )}
+
+        {!isLoading && hasRecovery && (
+          <p style={recoveryHintStyle}>
+            일부 문항은 1차 시험 로그가 없어 최근 응시 기록에서 복구했습니다.
+          </p>
         )}
 
         {!isLoading && !isReady && rows.length > 0 && (
@@ -401,6 +445,37 @@ const answerLoadingStyle = {
   color: "#1d4ed8",
   borderColor: "#bfdbfe",
   background: "#eff6ff",
+};
+
+const answerRecoveringStyle = {
+  ...answerNeutralStyle,
+  background: "#fff7ed",
+  border: "1px solid #fdba74",
+  color: "#c2410c",
+  fontWeight: 700,
+  fontSize: 12,
+};
+
+const recoveryWrapStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+const recoveryTagStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const recoveryHintStyle = {
+  margin: "0 0 12px",
+  padding: "8px 12px",
+  borderRadius: 8,
+  background: "#fff7ed",
+  border: "1px solid #fed7aa",
+  color: "#c2410c",
+  fontSize: 13,
 };
 
 const legendStyle = {

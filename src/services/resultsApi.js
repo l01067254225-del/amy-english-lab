@@ -1,4 +1,5 @@
 import * as localStorageApi from "../utils/resultsStorage";
+import { resolveResultByStudentAndDate } from "../utils/resultDetailLoader";
 import { enrichResultRecordForSave } from "../utils/resultAnswerStorage";
 import {
   ExamSubmissionValidationError,
@@ -55,4 +56,21 @@ export async function fetchResultById(resultId, { cache = "no-store" } = {}) {
   void cache;
   const all = await fetchAllResults({ cache: "no-store" });
   return all.find((item) => item.id === resultId) ?? null;
+}
+
+/** student_id + date 복합 키로 attempt_logs 병합 조회 */
+export async function fetchResultDetailByStudentDate(
+  { studentId, studentName, submittedAt, resultId },
+  { cache = "no-store" } = {}
+) {
+  void cache;
+  const all = await fetchAllResults({ cache: "no-store" });
+  return (
+    resolveResultByStudentAndDate(all, {
+      studentId,
+      studentName,
+      submittedAt,
+      resultId,
+    }) ?? null
+  );
 }
