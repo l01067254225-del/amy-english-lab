@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import ScoreReportPrintModal from "../../components/ScoreReportPrintModal";
 import { formatDate } from "../../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../../utils/examHelpers";
-import { LEVEL_OPTIONS } from "../../utils/levels";
+import { LEVEL_OPTIONS, formatLevelLabel } from "../../utils/levels";
 import { ensureArray } from "../../utils/safeData";
 import {
   btnSecondary,
@@ -159,7 +159,7 @@ export default function TeacherResultsTab({
                       <strong>{row.studentName}</strong>
                     </td>
                     <td style={thTdStyle}>
-                      <span style={levelBadgeStyle}>{row.level}</span>
+                      <span style={levelBadgeStyle}>{formatLevelLabel(row.level)}</span>
                     </td>
                     <td style={thTdStyle}>{row.testTitle}</td>
                     <td style={thTdStyle}>{row.subject}</td>

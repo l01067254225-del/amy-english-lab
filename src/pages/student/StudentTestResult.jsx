@@ -3,19 +3,27 @@ import SiteHeader from "../../components/SiteHeader";
 import StudentLevelCompareDashboard from "../../components/StudentLevelCompareDashboard";
 import { fetchAllResults, formatDate } from "../../services/resultsApi";
 import { getStudentLevel } from "../../utils/levelStats";
+import { ensureArray } from "../../utils/safeData";
 
 export default function StudentTestResult({ student, resultId, onBack, onLogout }) {
-  const studentKey = student.id;
-  const studentLevel = student.level || getStudentLevel(studentKey);
+  const studentKey = student?.id ?? "";
+  const studentLevel = student?.level || getStudentLevel(studentKey);
   const [savedResults, setSavedResults] = useState([]);
 
   const loadMyResults = useCallback(async () => {
-    const all = await fetchAllResults();
-    const mine = all.filter(
-      (r) => r.studentId === studentKey || r.studentName === studentKey
-    );
-    setSavedResults(mine);
-    return mine;
+    try {
+      const all = await fetchAllResults();
+      const list = ensureArray(all);
+      const mine = list.filter(
+        (r) => r && (r.studentId === studentKey || r.studentName === studentKey)
+      );
+      setSavedResults(mine);
+      return mine;
+    } catch (error) {
+      console.error(error);
+      setSavedResults([]);
+      return [];
+    }
   }, [studentKey]);
 
   useEffect(() => {
@@ -32,7 +40,7 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
       <div style={containerStyle}>
         <SiteHeader
           title="AMY ENGLISH LAB"
-          subtitle={`${student.name} · 시험 결과`}
+          subtitle={`${student?.name ?? "학생"} · 시험 결과`}
           onLogout={onLogout}
         />
 
@@ -68,7 +76,7 @@ export default function StudentTestResult({ student, resultId, onBack, onLogout 
 
             <h3 style={detailTitleStyle}>문항별 결과</h3>
             <ul style={detailListStyle}>
-              {(result.details ?? []).map((d) => (
+              {ensureArray(result.details).map((d) => (
                 <li
                   key={d.num}
                   style={{

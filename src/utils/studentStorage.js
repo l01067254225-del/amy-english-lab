@@ -1,3 +1,5 @@
+import { ensureArray } from "./safeData";
+
 export const STUDENTS_STORAGE_KEY = "amy-students-list";
 
 export const DEFAULT_STUDENTS = [
@@ -89,7 +91,7 @@ export function loadStudents() {
 }
 
 export function saveStudents(students) {
-  const normalized = students.map(normalizeStudent);
+  const normalized = ensureArray(students).map(normalizeStudent);
   writeStudents(normalized);
   return normalized;
 }

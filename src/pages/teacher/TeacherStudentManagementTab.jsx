@@ -17,7 +17,7 @@ import {
   thTdStyle,
 } from "./teacherStyles";
 
-import { LEVEL_OPTIONS } from "../../utils/levels";
+import { LEVEL_OPTIONS, formatLevelLabel, isActiveLevel } from "../../utils/levels";
 
 export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const [students, setStudents] = useState(() => loadStudents());
@@ -198,7 +198,7 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
                 {filteredStudents.map((student) => (
                   <tr key={student.uid} style={rowStyle}>
                     <td style={tdStyle}>
-                      <span style={levelBadgeStyle}>{student.level}</span>
+                      <span style={levelBadgeStyle}>{formatLevelLabel(student.level)}</span>
                     </td>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{student.name}</td>
                     <td style={tdStyle}>{student.school}</td>
@@ -244,7 +244,7 @@ function Field({ label, value, onChange, placeholder }) {
 }
 
 function LevelSelect({ value, onChange }) {
-  const isLegacyLevel = value && !LEVEL_OPTIONS.includes(value);
+  const isLegacyLevel = value && !isActiveLevel(value);
 
   return (
     <label style={compactLabelStyle}>

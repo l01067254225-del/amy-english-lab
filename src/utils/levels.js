@@ -13,6 +13,18 @@ export const LEVEL_OPTIONS = [
   "B1-2",
 ];
 
+export function isActiveLevel(level) {
+  const trimmed = String(level ?? "").trim();
+  return trimmed !== "" && LEVEL_OPTIONS.includes(trimmed);
+}
+
+export function formatLevelLabel(level) {
+  const trimmed = String(level ?? "").trim();
+  if (!trimmed || trimmed === "—" || trimmed === "-") return "—";
+  if (!LEVEL_OPTIONS.includes(trimmed)) return `${trimmed} (구)`;
+  return trimmed;
+}
+
 export function getTodayDateString(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");

@@ -3,6 +3,7 @@ import StudentLevelCompareDashboard from "./StudentLevelCompareDashboard";
 import { formatDate } from "../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../utils/examHelpers";
 import { formatTestDate } from "../utils/levels";
+import { ensureArray } from "../utils/safeData";
 import "../styles/scoreReportPrint.css";
 
 export default function ScoreReportPrintModal({ result, studentLevel, onClose }) {
@@ -86,11 +87,11 @@ export default function ScoreReportPrintModal({ result, studentLevel, onClose })
                 </div>
               </section>
 
-              {(result.details?.length ?? 0) > 0 && (
+              {(ensureArray(result.details).length ?? 0) > 0 && (
                 <section style={detailSectionStyle}>
                   <h2 style={sectionHeadingStyle}>문항별 결과</h2>
                   <div style={detailGridStyle}>
-                    {result.details.map((item) => (
+                    {ensureArray(result.details).map((item) => (
                       <div
                         key={item.num}
                         style={{

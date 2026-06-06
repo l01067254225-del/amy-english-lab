@@ -10,6 +10,7 @@ import {
 import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { loadExamSets } from "../../utils/questionBankStorage";
+import { ensureArray } from "../../utils/safeData";
 
 export default function StudentExamTake({
   student,
@@ -21,7 +22,7 @@ export default function StudentExamTake({
   const studentKey = student.id;
 
   const exam = useMemo(
-    () => loadExamSets().find((item) => item.id === examId) ?? null,
+    () => ensureArray(loadExamSets()).find((item) => item?.id === examId) ?? null,
     [examId]
   );
 

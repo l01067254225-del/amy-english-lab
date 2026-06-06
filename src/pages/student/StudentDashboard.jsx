@@ -3,7 +3,7 @@ import SiteHeader from "../../components/SiteHeader";
 import { fetchAllResults, formatDate } from "../../services/resultsApi";
 import { getExamQuestionCount, getExamSubjectSummary } from "../../utils/examHelpers";
 import { getStudentLevel } from "../../utils/levelStats";
-import { formatTestDate, getTodayDateString } from "../../utils/levels";
+import { formatTestDate, formatLevelLabel, getTodayDateString } from "../../utils/levels";
 import { getAvailableExamsForStudent } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
 
@@ -50,7 +50,7 @@ export default function StudentDashboard({
   }, [loadMyResults]);
 
   const greeting = studentLevel
-    ? `안녕하세요, ${studentName} 학생 (레벨: ${studentLevel})`
+    ? `안녕하세요, ${studentName} 학생 (레벨: ${formatLevelLabel(studentLevel)})`
     : `안녕하세요, ${studentName} 학생`;
 
   return (
