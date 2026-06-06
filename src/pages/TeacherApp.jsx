@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import { clearAllResults, fetchAllResults } from "../services/resultsApi";
 import { loadStudents } from "../utils/studentStorage";
@@ -176,7 +176,7 @@ export default function TeacherApp({ onBack }) {
 
         {activeTab === "results" && (
           <TeacherResultsTab
-            studentSummary={studentSummary}
+            students={students}
             results={results}
             loading={loading}
             onRefresh={loadResults}

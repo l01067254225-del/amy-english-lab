@@ -1,0 +1,43 @@
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body.score-report-printing * {
+    visibility: hidden !important;
+  }
+
+  body.score-report-printing #score-report-print-root,
+  body.score-report-printing #score-report-print-root * {
+    visibility: visible !important;
+  }
+
+  body.score-report-printing #score-report-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: white !important;
+  }
+
+  .score-report-no-print {
+    display: none !important;
+  }
+
+  .score-report-sheet {
+    box-shadow: none !important;
+    border: 2px solid #0f172a !important;
+    border-radius: 0 !important;
+    padding: 18mm 16mm !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .score-report-compare-grid {
+    break-inside: avoid;
+  }
+}

@@ -9,6 +9,9 @@ export default function StudentLevelCompareDashboard({
   studentId,
   result,
   level: levelProp,
+  myScoreTitle = "내 성적",
+  showFeedback = true,
+  className = "",
 }) {
   const level = levelProp || getStudentLevel(studentId);
   const stats = getLevelTestAverage(result.testId, level, {
@@ -30,10 +33,10 @@ export default function StudentLevelCompareDashboard({
   });
 
   return (
-    <div style={wrapStyle}>
+    <div className={className} style={wrapStyle}>
       <div style={gridStyle}>
         <ScoreCard
-          title="내 성적"
+          title={myScoreTitle}
           subtitle={result.testTitle}
           score={myScore}
           total={myTotal}
@@ -58,7 +61,7 @@ export default function StudentLevelCompareDashboard({
           isAverage={avgScore == null}
         />
       </div>
-      <p style={feedbackStyle}>{feedback}</p>
+      {showFeedback && <p style={feedbackStyle}>{feedback}</p>}
     </div>
   );
 }
@@ -140,9 +143,9 @@ function RingChart({ percent, color, trackColor, dimmed }) {
 }
 
 const wrapStyle = {
-  marginTop: 16,
-  paddingTop: 16,
-  borderTop: "1px solid #e2e8f0",
+  marginTop: 0,
+  paddingTop: 0,
+  borderTop: "none",
 };
 
 const gridStyle = {
