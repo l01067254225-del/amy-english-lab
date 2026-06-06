@@ -2,15 +2,29 @@ const AUTH_KEY = "amy-test-teacher-auth";
 const ADMIN_ID = "admin";
 const ADMIN_PASSWORD = "1234";
 
+function readTeacherAuthFrom(storage) {
+  return storage.getItem(AUTH_KEY) === "true";
+}
+
 export function isTeacherAuthed() {
-  return sessionStorage.getItem(AUTH_KEY) === "true";
+  if (readTeacherAuthFrom(localStorage)) return true;
+
+  if (readTeacherAuthFrom(sessionStorage)) {
+    setTeacherSession();
+    sessionStorage.removeItem(AUTH_KEY);
+    return true;
+  }
+
+  return false;
 }
 
 export function setTeacherSession() {
-  sessionStorage.setItem(AUTH_KEY, "true");
+  localStorage.setItem(AUTH_KEY, "true");
+  sessionStorage.removeItem(AUTH_KEY);
 }
 
 export function clearTeacherSession() {
+  localStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem(AUTH_KEY);
 }
 

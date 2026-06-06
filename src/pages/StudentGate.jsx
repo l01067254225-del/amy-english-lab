@@ -1,26 +1,58 @@
 import { useEffect, useState } from "react";
 import { getStudentSession, clearStudentSession } from "../utils/studentAuth";
+import {
+  clearStudentGateState,
+  loadStudentGateState,
+  saveStudentGateState,
+} from "../utils/studentGateStorage";
 import StudentDashboard from "./student/StudentDashboard";
 import StudentExamTake from "./student/StudentExamTake";
 import StudentTestResult from "./student/StudentTestResult";
 
 export default function StudentGate({ onBack }) {
-  const session = getStudentSession();
-  const [view, setView] = useState("dashboard");
-  const [activeExamId, setActiveExamId] = useState(null);
-  const [activeResultId, setActiveResultId] = useState(null);
-  const [retestResultId, setRetestResultId] = useState(null);
+  const initialGate = loadStudentGateState();
+  const [session, setSession] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [view, setView] = useState(initialGate.view);
+  const [activeExamId, setActiveExamId] = useState(initialGate.activeExamId);
+  const [activeResultId, setActiveResultId] = useState(initialGate.activeResultId);
+  const [retestResultId, setRetestResultId] = useState(initialGate.retestResultId);
 
   useEffect(() => {
+    setSession(getStudentSession());
+    setSessionReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
     if (!session) {
       onBack?.();
     }
-  }, [session, onBack]);
+  }, [session, sessionReady, onBack]);
+
+  useEffect(() => {
+    if (!sessionReady || !session) return;
+    saveStudentGateState({
+      view,
+      activeExamId,
+      activeResultId,
+      retestResultId,
+    });
+  }, [view, activeExamId, activeResultId, retestResultId, sessionReady, session]);
 
   const handleLogout = () => {
     clearStudentSession();
+    clearStudentGateState();
     onBack?.();
   };
+
+  if (!sessionReady) {
+    return (
+      <div style={fallbackPageStyle}>
+        <p style={{ margin: 0, color: "#64748b" }}>로그인 정보를 확인하는 중...</p>
+      </div>
+    );
+  }
 
   if (!session) {
     return (

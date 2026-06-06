@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QuestionCard from "../../components/QuestionCard";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
@@ -7,11 +7,19 @@ import {
   buildExamTakeView,
   shouldShowReadingPassage,
 } from "../../utils/examTakeView";
+import {
+  clearExamDraft,
+  loadExamDraft,
+  saveExamDraft,
+} from "../../utils/examDraftStorage";
 import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { loadExamSets } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
 import { shuffleArray } from "../../utils/shuffle";
+
+const REFRESH_WARNING =
+  "지금 새로고침하면 시험 내용이 초기화될 수 있습니다. 정말 하시겠습니까?";
 
 export default function StudentExamTake({
   student,
@@ -45,9 +53,28 @@ export default function StudentExamTake({
   const total = flatQuestions.length;
   const isReadingMode = examView?.mode === "reading";
 
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState(() => {
+    const draft = loadExamDraft(studentKey, examId);
+    return draft?.answers ?? {};
+  });
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (submitted) return;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = REFRESH_WARNING;
+      return REFRESH_WARNING;
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [submitted]);
+
+  useEffect(() => {
+    if (submitted) return;
+    saveExamDraft(studentKey, examId, answers);
+  }, [answers, examId, studentKey, submitted]);
 
   const setAnswer = (qid, value) => {
     setAnswers((prev) => ({ ...prev, [qid]: value }));
@@ -56,6 +83,7 @@ export default function StudentExamTake({
   const reset = () => {
     setAnswers({});
     setSubmitted(false);
+    clearExamDraft(studentKey, examId);
   };
 
   const submit = async () => {
@@ -103,6 +131,7 @@ export default function StudentExamTake({
       );
       const targetId = isRetest && retestResultId ? retestResultId : mine[0]?.id;
       setSubmitted(true);
+      clearExamDraft(studentKey, examId);
       if (targetId) {
         onSubmitted?.(targetId);
       }

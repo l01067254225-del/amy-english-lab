@@ -23,7 +23,8 @@ const TABS = [
 ];
 
 export default function TeacherApp({ onBack }) {
-  const [authed, setAuthed] = useState(() => isTeacherAuthed());
+  const [authReady, setAuthReady] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [activeTab, setActiveTab] = useState("results");
   const [teacherId, setTeacherId] = useState("");
   const [password, setPassword] = useState("");
@@ -43,6 +44,11 @@ export default function TeacherApp({ onBack }) {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    setAuthed(isTeacherAuthed());
+    setAuthReady(true);
   }, []);
 
   useEffect(() => {
@@ -79,6 +85,16 @@ export default function TeacherApp({ onBack }) {
     await clearAllResults();
     setResults([]);
   };
+
+  if (!authReady) {
+    return (
+      <div style={pageStyle}>
+        <div style={{ ...cardStyle, maxWidth: 420, margin: "80px auto", textAlign: "center" }}>
+          <p style={{ margin: 0, color: "#64748b" }}>로그인 정보를 확인하는 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!authed) {
     return (
