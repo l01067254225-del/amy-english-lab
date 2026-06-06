@@ -360,7 +360,7 @@ export function buildSetNameList({
     const byName = new Map();
 
     ensureArray(vocaSets).forEach((set) => {
-      if (level && set.level !== level) return;
+      if (level && set.level && set.level !== level) return;
       const setName = String(set.setName ?? "").trim() || MISC_SET_NAME;
 
       if (!byName.has(setName)) {
@@ -389,8 +389,8 @@ export function buildSetNameList({
 
     ensureArray(questions).forEach((rawQuestion) => {
       const question = ensureQuestionSetFields(rawQuestion);
-      if (level && question.level !== level) return;
       if (question.subject !== normalizedSubject) return;
+      if (level && question.level && question.level !== level) return;
 
       const setName = getQuestionSetName(question) || MISC_SET_NAME;
 
