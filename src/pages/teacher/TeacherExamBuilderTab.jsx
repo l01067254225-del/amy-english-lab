@@ -9,11 +9,11 @@ import {
   SUBJECT_OPTIONS,
 } from "../../utils/questionBankStorage";
 import { formatTestDate, getTodayDateString, LEVEL_OPTIONS } from "../../utils/levels";
-import { shuffleArray } from "../../utils/shuffle";
 import { buildVocaExamQuestions, getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
 import {
   buildMaterialCatalog,
   collectQuestionIdsFromMaterialSets,
+  drawQuestionsFromPool,
 } from "../../utils/materialSetStorage";
 import {
   collectWordsFromVocaSets,
@@ -45,21 +45,26 @@ function getVocaExamTypeLabel(examType) {
 }
 
 export default function TeacherExamBuilderTab() {
-  const [questionBank] = useState(() => loadQuestionBank());
-  const [vocaSets] = useState(() => loadVocaSets());
+  const [questionBank, setQuestionBank] = useState(() => loadQuestionBank());
+  const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
   const [examSets, setExamSets] = useState(() => loadExamSets());
-  const [selectedIds, setSelectedIds] = useState([]);
   const [selectedMaterialIds, setSelectedMaterialIds] = useState([]);
   const [examTitle, setExamTitle] = useState("");
   const [targetLevel, setTargetLevel] = useState("");
   const [testDate, setTestDate] = useState(() => getTodayDateString());
-  const [filterSubject, setFilterSubject] = useState("all");
+  const [filterSubject, setFilterSubject] = useState("");
   const [vocaExamType, setVocaExamType] = useState("meaning");
   const [vocaDrawCount, setVocaDrawCount] = useState("");
+  const [materialDrawCount, setMaterialDrawCount] = useState("");
   const [buildError, setBuildError] = useState("");
 
+  useEffect(() => {
+    setQuestionBank(loadQuestionBank());
+    setVocaSets(loadVocaSets());
+  }, []);
+
   const isVocabMode = filterSubject === "vocab";
-  const isMaterialMode = filterSubject !== "all";
+  const isMaterialMode = Boolean(filterSubject);
 
   const levelQuestions = useMemo(
     () => filterQuestionsByLevel(questionBank, targetLevel),
@@ -82,14 +87,20 @@ export default function TeacherExamBuilderTab() {
     [levelQuestions, levelVocaSets, filterSubject, targetLevel]
   );
 
-  const filteredQuestions = useMemo(() => {
-    if (isMaterialMode) return [];
-    return levelQuestions;
-  }, [levelQuestions, isMaterialMode]);
-
   const selectedMaterialQuestionIds = useMemo(
     () => collectQuestionIdsFromMaterialSets(materialCatalog, selectedMaterialIds),
     [materialCatalog, selectedMaterialIds]
+  );
+
+  const selectedQuestionPool = useMemo(
+    () =>
+      questionBank.filter(
+        (q) =>
+          selectedMaterialQuestionIds.includes(q.id) &&
+          q.level === targetLevel &&
+          q.subject === filterSubject
+      ),
+    [questionBank, selectedMaterialQuestionIds, targetLevel, filterSubject]
   );
 
   const selectedWords = useMemo(
@@ -98,6 +109,24 @@ export default function TeacherExamBuilderTab() {
   );
 
   const availableWordCount = selectedWords.length;
+  const availableQuestionCount = isVocabMode ? availableWordCount : selectedQuestionPool.length;
+
+  useEffect(() => {
+    setSelectedMaterialIds((prev) =>
+      prev.filter((id) => materialCatalog.some((entry) => entry.id === id))
+    );
+  }, [materialCatalog]);
+
+  useEffect(() => {
+    if (!isMaterialMode || availableQuestionCount === 0) return;
+    setMaterialDrawCount((prev) => {
+      const current = Number(prev);
+      if (!prev || !Number.isFinite(current) || current > availableQuestionCount) {
+        return String(availableQuestionCount);
+      }
+      return prev;
+    });
+  }, [isMaterialMode, availableQuestionCount, selectedMaterialIds, isVocabMode]);
 
   useEffect(() => {
     if (!isVocabMode || availableWordCount === 0) return;
@@ -110,12 +139,6 @@ export default function TeacherExamBuilderTab() {
     });
   }, [isVocabMode, availableWordCount, selectedMaterialIds]);
 
-  const toggleQuestion = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
   const toggleMaterial = (materialId) => {
     setSelectedMaterialIds((prev) =>
       prev.includes(materialId)
@@ -124,14 +147,8 @@ export default function TeacherExamBuilderTab() {
     );
   };
 
-  const toggleAllVisible = () => {
-    const visibleIds = filteredQuestions.map((q) => q.id);
-    const allSelected = visibleIds.every((id) => selectedIds.includes(id));
-    if (allSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
-    } else {
-      setSelectedIds((prev) => [...new Set([...prev, ...visibleIds])]);
-    }
+  const selectMaterialOnly = (materialId) => {
+    setSelectedMaterialIds([materialId]);
   };
 
   const toggleAllMaterials = () => {
@@ -146,34 +163,24 @@ export default function TeacherExamBuilderTab() {
 
   const handleTargetLevelChange = (nextLevel) => {
     setTargetLevel(nextLevel);
-    setSelectedIds((prev) =>
-      prev.filter((id) => {
-        const question = questionBank.find((q) => q.id === id);
-        return question?.level === nextLevel;
-      })
-    );
-    setSelectedMaterialIds((prev) =>
-      prev.filter((id) => {
-        const voca = vocaSets.find((set) => set.setId === id);
-        if (voca) return voca.level === nextLevel;
-        return questionBank.some(
-          (question) => question.materialSetId === id && question.level === nextLevel
-        );
-      })
-    );
+    setSelectedMaterialIds([]);
+    setVocaDrawCount("");
+    setMaterialDrawCount("");
+    setBuildError("");
   };
 
   const handleFilterSubjectChange = (nextSubject) => {
     setFilterSubject(nextSubject);
     setBuildError("");
-    setSelectedIds([]);
     setSelectedMaterialIds([]);
+    setVocaDrawCount("");
+    setMaterialDrawCount("");
   };
 
-  const applyDrawPreset = (count) => {
-    if (!availableWordCount) return;
-    const next = count === "all" ? availableWordCount : Math.min(count, availableWordCount);
-    setVocaDrawCount(String(next));
+  const applyDrawPreset = (count, setter, maxCount) => {
+    if (!maxCount) return;
+    const next = count === "all" ? maxCount : Math.min(count, maxCount);
+    setter(String(next));
   };
 
   const handleBuildExam = () => {
@@ -185,17 +192,20 @@ export default function TeacherExamBuilderTab() {
       setBuildError("대상 레벨을 선택해 주세요.");
       return;
     }
+    if (!filterSubject) {
+      setBuildError("과목을 선택해 주세요.");
+      return;
+    }
     if (!testDate) {
       setBuildError("시험 날짜를 선택해 주세요.");
       return;
     }
+    if (selectedMaterialIds.length === 0) {
+      setBuildError("시험 자료를 하나 이상 선택해 주세요.");
+      return;
+    }
 
     if (isVocabMode) {
-      if (selectedMaterialIds.length === 0) {
-        setBuildError("시험 자료를 하나 이상 선택해 주세요.");
-        return;
-      }
-
       const words = collectWordsFromVocaSets(levelVocaSets, selectedMaterialIds);
       if (words.length === 0) {
         setBuildError("선택한 세트에 등록된 단어가 없습니다.");
@@ -241,87 +251,55 @@ export default function TeacherExamBuilderTab() {
       return;
     }
 
-    if (isMaterialMode) {
-      if (selectedMaterialIds.length === 0) {
-        setBuildError("시험 자료를 하나 이상 선택해 주세요.");
-        return;
-      }
+    if (selectedQuestionPool.length === 0) {
+      setBuildError("선택한 자료에 포함된 문제가 없습니다.");
+      return;
+    }
 
-      let selectedQuestions = questionBank.filter(
-        (q) =>
-          selectedMaterialQuestionIds.includes(q.id) &&
-          q.level === targetLevel &&
-          q.subject === filterSubject
+    const drawCount = Number(materialDrawCount);
+    if (!Number.isFinite(drawCount) || drawCount <= 0) {
+      setBuildError("출제 문항 수를 1 이상 입력해 주세요.");
+      return;
+    }
+    if (drawCount > selectedQuestionPool.length) {
+      setBuildError(
+        `출제 문항 수는 선택한 자료의 문항 수(${selectedQuestionPool.length}개)를 넘을 수 없습니다.`
       );
-
-      if (selectedQuestions.length === 0) {
-        setBuildError("선택한 자료에 포함된 문제가 없습니다.");
-        return;
-      }
-
-      if (filterSubject === "writing") {
-        selectedQuestions = shuffleArray(selectedQuestions);
-      }
-
-      const next = addExamSet({
-        title: examTitle.trim(),
-        questions: selectedQuestions,
-        targetLevel,
-        testDate,
-        materialSource: {
-          materialSetIds: selectedMaterialIds,
-          subject: filterSubject,
-        },
-      });
-      setExamSets(next);
-      setExamTitle("");
-      setSelectedMaterialIds([]);
-      setBuildError("");
       return;
     }
 
-    if (selectedIds.length === 0) {
-      setBuildError("시험에 포함할 문제를 하나 이상 선택해 주세요.");
-      return;
-    }
-
-    const selectedQuestions = questionBank.filter(
-      (q) => selectedIds.includes(q.id) && q.level === targetLevel
-    );
-    if (selectedQuestions.length === 0) {
-      setBuildError("선택한 레벨에 해당하는 문제가 없습니다.");
-      return;
-    }
-
-    const finalQuestions =
-      selectedQuestions.some((q) => q.subject === "writing") &&
-      selectedQuestions.every((q) => q.subject === "writing")
-        ? shuffleArray(selectedQuestions)
-        : selectedQuestions;
+    const selectedQuestions = drawQuestionsFromPool(selectedQuestionPool, drawCount);
 
     const next = addExamSet({
       title: examTitle.trim(),
-      questions: finalQuestions,
+      questions: selectedQuestions,
       targetLevel,
       testDate,
+      materialSource: {
+        materialSetIds: selectedMaterialIds,
+        subject: filterSubject,
+        drawCount,
+      },
     });
     setExamSets(next);
     setExamTitle("");
-    setSelectedIds([]);
+    setSelectedMaterialIds([]);
+    setMaterialDrawCount("");
     setBuildError("");
   };
+
+  const selectedMaterialEntries = materialCatalog.filter((entry) =>
+    selectedMaterialIds.includes(entry.id)
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={summaryCard}>
         <h2 style={sectionTitle}>시험지 만들기</h2>
         <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
-          {isMaterialMode
-            ? isVocabMode
-              ? "Voca 시험 자료를 선택하고 시험 유형·출제 수를 지정하면 무작위로 문항이 생성됩니다."
-              : "과목별 시험 자료를 선택하면 포함된 문항이 자동으로 시험지에 반영됩니다."
-            : "대상 레벨과 시험 날짜를 지정한 뒤, 해당 레벨 문제은행에서 문항을 선택해 시험지를 생성하세요."}{" "}
-          학생은 본인 레벨과 시험 날짜가 일치할 때만 시험을 볼 수 있습니다.
+          대상 레벨과 과목을 선택한 뒤, 문제은행에 등록된 <strong>시험 자료명(세트)</strong>을
+          고르고 출제 문항 수를 지정하면 무작위로 시험지가 생성됩니다. 학생은 본인 레벨과 시험
+          날짜가 일치할 때만 시험을 볼 수 있습니다.
         </p>
 
         <div
@@ -338,7 +316,13 @@ export default function TeacherExamBuilderTab() {
               type="text"
               value={examTitle}
               onChange={(e) => setExamTitle(e.target.value)}
-              placeholder={isVocabMode ? "예: 6월 Voca 뜻쓰기 40제" : "예: 6월 Grammar 모의고사"}
+              placeholder={
+                isVocabMode
+                  ? "예: 6월 Voca 뜻쓰기 40제"
+                  : filterSubject
+                    ? `예: 6월 ${getSubjectLabel(filterSubject)} 모의고사`
+                    : "예: 6월 Grammar 모의고사"
+              }
               style={inputStyle}
             />
           </label>
@@ -360,6 +344,23 @@ export default function TeacherExamBuilderTab() {
           </label>
 
           <label style={labelStyle}>
+            과목
+            <select
+              value={filterSubject}
+              onChange={(e) => handleFilterSubjectChange(e.target.value)}
+              style={inputStyle}
+              disabled={!targetLevel}
+            >
+              <option value="">과목 선택</option>
+              {SUBJECT_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={labelStyle}>
             시험 날짜
             <input
               type="date"
@@ -370,28 +371,31 @@ export default function TeacherExamBuilderTab() {
           </label>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          <select
-            value={filterSubject}
-            onChange={(e) => handleFilterSubjectChange(e.target.value)}
-            style={{ ...inputStyle, width: "auto", marginTop: 0 }}
-            disabled={!targetLevel}
-          >
-            <option value="all">전체 과목</option>
-            {SUBJECT_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        {buildError && (
+          <p style={{ color: "#b91c1c", margin: "0 0 12px", fontSize: 14 }}>{buildError}</p>
+        )}
 
-          {isMaterialMode ? (
-            <>
+        {!targetLevel ? (
+          <p style={{ margin: 0, color: "#64748b" }}>
+            먼저 대상 레벨을 선택하면 해당 레벨의 시험 자료만 표시됩니다.
+          </p>
+        ) : !filterSubject ? (
+          <p style={{ margin: 0, color: "#64748b" }}>
+            과목을 선택하면 등록된 시험 자료명(세트) 목록이 표시됩니다.
+          </p>
+        ) : materialCatalog.length === 0 ? (
+          <p style={{ margin: 0, color: "#64748b" }}>
+            {targetLevel} 레벨 {getSubjectLabel(filterSubject)} 시험 자료가 없습니다. 문제은행
+            관리에서 시험 자료명을 입력하고 텍스트 붙여넣기로 자료를 등록해 주세요.
+          </p>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
               <button
                 type="button"
                 onClick={toggleAllMaterials}
                 style={btnSecondary}
-                disabled={!targetLevel || materialCatalog.length === 0}
+                disabled={materialCatalog.length === 0}
               >
                 {materialCatalog.every((entry) => selectedMaterialIds.includes(entry.id)) &&
                 materialCatalog.length > 0
@@ -402,131 +406,85 @@ export default function TeacherExamBuilderTab() {
                 선택 자료 {selectedMaterialIds.length}개
                 {isVocabMode
                   ? ` · 사용 가능 단어 ${availableWordCount}개`
-                  : ` · 포함 문항 ${selectedMaterialQuestionIds.length}개`}
+                  : ` · 포함 문항 ${selectedQuestionPool.length}개`}
               </span>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={toggleAllVisible}
-                style={btnSecondary}
-                disabled={!targetLevel || filteredQuestions.length === 0}
-              >
-                {filteredQuestions.every((q) => selectedIds.includes(q.id)) &&
-                filteredQuestions.length > 0
-                  ? "현재 목록 선택 해제"
-                  : "현재 목록 전체 선택"}
-              </button>
-              <span style={{ alignSelf: "center", color: "#64748b", fontSize: 14 }}>
-                선택됨: {selectedIds.length}문항
-                {targetLevel ? ` · ${targetLevel} 레벨` : ""}
-              </span>
-            </>
-          )}
-        </div>
+            </div>
 
-        {buildError && (
-          <p style={{ color: "#b91c1c", margin: "0 0 12px", fontSize: 14 }}>{buildError}</p>
-        )}
-
-        {!targetLevel ? (
-          <p style={{ margin: 0, color: "#64748b" }}>
-            먼저 대상 레벨을 선택하면 해당 레벨 자료만 표시됩니다.
-          </p>
-        ) : isMaterialMode ? (
-          materialCatalog.length === 0 ? (
-            <p style={{ margin: 0, color: "#64748b" }}>
-              {targetLevel} 레벨 {getSubjectLabel(filterSubject)} 시험 자료가 없습니다. 문제은행
-              관리에서 텍스트 붙여넣기로 자료를 등록해 주세요.
-            </p>
-          ) : (
             <div style={{ overflowX: "auto", marginBottom: 16 }}>
               <table style={tableStyle}>
                 <thead>
                   <tr>
                     <th style={{ ...thTdStyle, width: 48 }}></th>
                     <th style={thTdStyle}>시험 자료명</th>
-                    <th style={thTdStyle}>과목</th>
                     <th style={thTdStyle}>레벨</th>
                     <th style={thTdStyle}>{isVocabMode ? "단어 수" : "문항 수"}</th>
                     <th style={thTdStyle}>미리보기</th>
+                    <th style={{ ...thTdStyle, width: 120 }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {materialCatalog.map((entry) => (
-                    <tr key={`${entry.kind}-${entry.id}`}>
-                      <td style={thTdStyle}>
-                        <input
-                          type="checkbox"
-                          checked={selectedMaterialIds.includes(entry.id)}
-                          onChange={() => toggleMaterial(entry.id)}
-                        />
-                      </td>
-                      <td style={thTdStyle}>{entry.name}</td>
-                      <td style={thTdStyle}>{getSubjectLabel(entry.subject)}</td>
-                      <td style={thTdStyle}>{entry.level || "—"}</td>
-                      <td style={thTdStyle}>{entry.count}개</td>
-                      <td style={thTdStyle}>{entry.preview || "—"}</td>
-                    </tr>
-                  ))}
+                  {materialCatalog.map((entry) => {
+                    const isSelected = selectedMaterialIds.includes(entry.id);
+                    return (
+                      <tr
+                        key={`${entry.kind}-${entry.id}`}
+                        style={isSelected ? { background: "#f0fdf4" } : undefined}
+                      >
+                        <td style={thTdStyle}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleMaterial(entry.id)}
+                            aria-label={`${entry.name} 선택`}
+                          />
+                        </td>
+                        <td style={{ ...thTdStyle, fontWeight: isSelected ? 700 : 500 }}>
+                          {entry.name}
+                        </td>
+                        <td style={thTdStyle}>{entry.level || "—"}</td>
+                        <td style={thTdStyle}>{entry.count}개</td>
+                        <td style={thTdStyle}>{entry.preview || "—"}</td>
+                        <td style={thTdStyle}>
+                          <button
+                            type="button"
+                            style={btnSelectSetStyle}
+                            onClick={() => selectMaterialOnly(entry.id)}
+                          >
+                            세트 선택
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          )
-        ) : questionBank.length === 0 ? (
-          <p style={{ margin: 0, color: "#64748b" }}>
-            문제은행에 등록된 문항이 없습니다. 먼저 문제은행 관리 탭에서 문제를 추가하세요.
-          </p>
-        ) : levelQuestions.length === 0 ? (
-          <p style={{ margin: 0, color: "#64748b" }}>
-            {targetLevel} 레벨로 등록된 문제가 없습니다. 문제은행에서 레벨을 지정해 문항을
-            추가해 주세요.
-          </p>
-        ) : filteredQuestions.length === 0 ? (
-          <p style={{ margin: 0, color: "#64748b" }}>선택한 과목에 해당하는 문제가 없습니다.</p>
-        ) : (
-          <div style={{ overflowX: "auto", marginBottom: 16 }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={{ ...thTdStyle, width: 48 }}></th>
-                  <th style={thTdStyle}>과목</th>
-                  <th style={thTdStyle}>레벨</th>
-                  <th style={thTdStyle}>문제</th>
-                  <th style={thTdStyle}>정답</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQuestions.map((q) => (
-                  <tr key={q.id}>
-                    <td style={thTdStyle}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(q.id)}
-                        onChange={() => toggleQuestion(q.id)}
-                      />
-                    </td>
-                    <td style={thTdStyle}>{getSubjectLabel(q.subject)}</td>
-                    <td style={thTdStyle}>{q.level || "—"}</td>
-                    <td style={thTdStyle}>{q.prompt}</td>
-                    <td style={thTdStyle}>{formatQuestionAnswer(q)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+            {selectedMaterialEntries.length > 0 && (
+              <div style={selectedSummaryStyle}>
+                <strong style={{ color: "#0f172a" }}>선택된 시험 자료</strong>
+                <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "#475569", lineHeight: 1.7 }}>
+                  {selectedMaterialEntries.map((entry) => (
+                    <li key={entry.id}>
+                      {entry.name} ({entry.count}
+                      {isVocabMode ? "단어" : "문항"})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         )}
 
         {isVocabMode && selectedMaterialIds.length > 0 && availableWordCount > 0 && (
-          <div style={vocaOptionsPanelStyle}>
-            <h3 style={vocaOptionsTitleStyle}>단어 시험 설정</h3>
+          <div style={drawOptionsPanelStyle}>
+            <h3 style={drawOptionsTitleStyle}>단어 시험 설정</h3>
 
-            <div style={vocaOptionBlockStyle}>
-              <span style={vocaOptionLabelStyle}>시험 유형</span>
-              <div style={vocaRadioRowStyle}>
+            <div style={drawOptionBlockStyle}>
+              <span style={drawOptionLabelStyle}>시험 유형</span>
+              <div style={drawRadioRowStyle}>
                 {VOCA_EXAM_TYPES.map((item) => (
-                  <label key={item.id} style={vocaRadioLabelStyle}>
+                  <label key={item.id} style={drawRadioLabelStyle}>
                     <input
                       type="radio"
                       name="vocaExamType"
@@ -535,14 +493,14 @@ export default function TeacherExamBuilderTab() {
                       onChange={() => setVocaExamType(item.id)}
                     />
                     <span>{item.label}</span>
-                    <small style={vocaRadioDescStyle}>{item.description}</small>
+                    <small style={drawRadioDescStyle}>{item.description}</small>
                   </label>
                 ))}
               </div>
             </div>
 
-            <div style={vocaOptionBlockStyle}>
-              <label style={vocaOptionLabelStyle}>
+            <div style={drawOptionBlockStyle}>
+              <label style={drawOptionLabelStyle}>
                 출제 문항 수
                 <input
                   type="number"
@@ -553,8 +511,12 @@ export default function TeacherExamBuilderTab() {
                   style={{ ...inputStyle, maxWidth: 160, marginTop: 8 }}
                 />
               </label>
-              <div style={vocaPresetRowStyle}>
-                <button type="button" style={btnSecondary} onClick={() => applyDrawPreset("all")}>
+              <div style={drawPresetRowStyle}>
+                <button
+                  type="button"
+                  style={btnSecondary}
+                  onClick={() => applyDrawPreset("all", setVocaDrawCount, availableWordCount)}
+                >
                   전체 ({availableWordCount})
                 </button>
                 {[40, 60, 80].map((preset) => (
@@ -563,13 +525,13 @@ export default function TeacherExamBuilderTab() {
                     type="button"
                     style={btnSecondary}
                     disabled={availableWordCount < preset}
-                    onClick={() => applyDrawPreset(preset)}
+                    onClick={() => applyDrawPreset(preset, setVocaDrawCount, availableWordCount)}
                   >
                     {preset}개
                   </button>
                 ))}
               </div>
-              <p style={vocaOptionHintStyle}>
+              <p style={drawOptionHintStyle}>
                 {vocaExamType === "mix" ? (
                   <>
                     혼합 모드: 총 {vocaDrawCount || "—"}문항 중 뜻 쓰기{" "}
@@ -584,14 +546,64 @@ export default function TeacherExamBuilderTab() {
           </div>
         )}
 
+        {!isVocabMode &&
+          isMaterialMode &&
+          selectedMaterialIds.length > 0 &&
+          selectedQuestionPool.length > 0 && (
+            <div style={drawOptionsPanelStyle}>
+              <h3 style={drawOptionsTitleStyle}>{getSubjectLabel(filterSubject)} 출제 설정</h3>
+
+              <div style={drawOptionBlockStyle}>
+                <label style={drawOptionLabelStyle}>
+                  출제 문항 수
+                  <input
+                    type="number"
+                    min={1}
+                    max={selectedQuestionPool.length}
+                    value={materialDrawCount}
+                    onChange={(e) => setMaterialDrawCount(e.target.value)}
+                    style={{ ...inputStyle, maxWidth: 160, marginTop: 8 }}
+                  />
+                </label>
+                <div style={drawPresetRowStyle}>
+                  <button
+                    type="button"
+                    style={btnSecondary}
+                    onClick={() =>
+                      applyDrawPreset("all", setMaterialDrawCount, selectedQuestionPool.length)
+                    }
+                  >
+                    전체 ({selectedQuestionPool.length})
+                  </button>
+                  {[10, 20, 30].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      style={btnSecondary}
+                      disabled={selectedQuestionPool.length < preset}
+                      onClick={() =>
+                        applyDrawPreset(preset, setMaterialDrawCount, selectedQuestionPool.length)
+                      }
+                    >
+                      {preset}개
+                    </button>
+                  ))}
+                </div>
+                <p style={drawOptionHintStyle}>
+                  선택한 시험 자료 {selectedMaterialIds.length}개(총{" "}
+                  {selectedQuestionPool.length}문항)에서 무작위로 {materialDrawCount || "—"}문항을
+                  추출해 시험지를 만듭니다.
+                  {filterSubject === "writing" ? " Writing 문항은 출제 순서도 무작위로 섞입니다." : ""}
+                </p>
+              </div>
+            </div>
+          )}
+
         <button
           type="button"
           onClick={handleBuildExam}
-          style={btnPrimary}
-          disabled={
-            !targetLevel ||
-            (isMaterialMode ? materialCatalog.length === 0 : questionBank.length === 0)
-          }
+          style={{ ...btnPrimary, marginTop: 16 }}
+          disabled={!targetLevel || !filterSubject}
         >
           시험지 만들기
         </button>
@@ -630,6 +642,9 @@ export default function TeacherExamBuilderTab() {
                     {exam.vocaSource
                       ? ` · Voca ${getVocaExamTypeLabel(exam.vocaSource.examType)}`
                       : ""}
+                    {exam.materialSource?.drawCount
+                      ? ` · ${exam.materialSource.drawCount}문항 추출`
+                      : ""}
                   </span>
                 </div>
                 <ul style={{ margin: 0, paddingLeft: 20, color: "#475569", lineHeight: 1.7 }}>
@@ -651,7 +666,7 @@ export default function TeacherExamBuilderTab() {
   );
 }
 
-const vocaOptionsPanelStyle = {
+const drawOptionsPanelStyle = {
   marginBottom: 16,
   padding: 16,
   borderRadius: 14,
@@ -659,32 +674,32 @@ const vocaOptionsPanelStyle = {
   background: "#eef2ff",
 };
 
-const vocaOptionsTitleStyle = {
+const drawOptionsTitleStyle = {
   margin: "0 0 14px",
   fontSize: 16,
   fontWeight: 800,
   color: "#312e81",
 };
 
-const vocaOptionBlockStyle = {
+const drawOptionBlockStyle = {
   marginBottom: 14,
 };
 
-const vocaOptionLabelStyle = {
+const drawOptionLabelStyle = {
   display: "block",
   fontWeight: 700,
   color: "#334155",
   fontSize: 14,
 };
 
-const vocaRadioRowStyle = {
+const drawRadioRowStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 10,
   marginTop: 10,
 };
 
-const vocaRadioLabelStyle = {
+const drawRadioLabelStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 4,
@@ -697,21 +712,41 @@ const vocaRadioLabelStyle = {
   color: "#1e293b",
 };
 
-const vocaRadioDescStyle = {
+const drawRadioDescStyle = {
   fontWeight: 500,
   color: "#64748b",
   fontSize: 12,
 };
 
-const vocaPresetRowStyle = {
+const drawPresetRowStyle = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
   marginTop: 10,
 };
 
-const vocaOptionHintStyle = {
+const drawOptionHintStyle = {
   margin: "8px 0 0",
   fontSize: 13,
   color: "#64748b",
+};
+
+const btnSelectSetStyle = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "white",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const selectedSummaryStyle = {
+  marginBottom: 16,
+  padding: "12px 14px",
+  borderRadius: 12,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
 };

@@ -1,5 +1,6 @@
 import { getSubjectLabel } from "./questionBankStorage";
 import { ensureArray } from "./safeData";
+import { shuffleArray } from "./shuffle";
 
 export function createMaterialSetId() {
   return `mat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -30,17 +31,44 @@ export function suggestMaterialSetName(subject = "grammar", level = "") {
   return `${prefix}${subjectLabel} 자료 (${dateLabel})`;
 }
 
+export function getQuestionMaterialName(question) {
+  return String(
+    question?.materialName ?? question?.materialSetName ?? question?.setName ?? ""
+  ).trim();
+}
+
+export function getQuestionMaterialId(question) {
+  return String(question?.materialId ?? question?.materialSetId ?? "").trim();
+}
+
+export function getMaterialGroupKey(question) {
+  const materialId = getQuestionMaterialId(question);
+  if (materialId) return materialId;
+
+  const materialName = getQuestionMaterialName(question);
+  if (materialName) {
+    return `name:${question.subject}:${question.level}:${materialName}`;
+  }
+
+  if (question?.subject === "reading" && question?.passageId) {
+    return `passage:${question.passageId}`;
+  }
+
+  return "";
+}
+
 export function buildMaterialCatalog({
   questions = [],
   vocaSets = [],
-  subject = "all",
+  subject = "",
   level = "",
   query = "",
 } = {}) {
   const entries = [];
   const normalizedQuery = String(query ?? "").trim().toLowerCase();
+  const normalizedSubject = String(subject ?? "").trim();
 
-  if (subject === "all" || subject === "vocab") {
+  if (!normalizedSubject || normalizedSubject === "vocab") {
     ensureArray(vocaSets).forEach((set) => {
       if (level && set.level !== level) return;
       entries.push({
@@ -59,29 +87,32 @@ export function buildMaterialCatalog({
     });
   }
 
-  if (subject !== "vocab") {
+  if (normalizedSubject && normalizedSubject !== "vocab") {
     const grouped = new Map();
 
     ensureArray(questions).forEach((question) => {
-      if (!question?.materialSetId) return;
+      const groupKey = getMaterialGroupKey(question);
+      if (!groupKey) return;
       if (level && question.level !== level) return;
-      if (subject !== "all" && question.subject !== subject) return;
+      if (question.subject !== normalizedSubject) return;
 
-      if (!grouped.has(question.materialSetId)) {
-        grouped.set(question.materialSetId, {
-          id: question.materialSetId,
-          name: question.materialSetName || "이름 없는 시험 자료",
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
+          id: groupKey,
+          materialId: getQuestionMaterialId(question) || groupKey,
+          name: getQuestionMaterialName(question) || "이름 없는 시험 자료",
           subject: question.subject,
           level: question.level,
           questions: [],
         });
       }
-      grouped.get(question.materialSetId).questions.push(question);
+      grouped.get(groupKey).questions.push(question);
     });
 
     grouped.forEach((group) => {
       entries.push({
         id: group.id,
+        materialId: group.materialId,
         name: group.name,
         subject: group.subject,
         level: group.level,
@@ -128,10 +159,23 @@ export function collectQuestionIdsFromMaterialSets(catalog, selectedIds) {
   return [...questionIds];
 }
 
-export function filterMaterialCatalog(catalog, { level = "", subject = "all" } = {}) {
+export function drawQuestionsFromPool(pool, drawCount) {
+  const list = ensureArray(pool);
+  if (list.length === 0) return [];
+
+  const shuffled = shuffleArray(list);
+  const requested = Number(drawCount);
+  if (!Number.isFinite(requested) || requested <= 0) {
+    return shuffled;
+  }
+
+  return shuffled.slice(0, Math.min(Math.floor(requested), shuffled.length));
+}
+
+export function filterMaterialCatalog(catalog, { level = "", subject = "" } = {}) {
   return ensureArray(catalog).filter((entry) => {
     if (level && entry.level !== level) return false;
-    if (subject !== "all" && entry.subject !== subject) return false;
+    if (subject && entry.subject !== subject) return false;
     return true;
   });
 }

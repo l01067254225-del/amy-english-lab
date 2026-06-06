@@ -78,14 +78,22 @@ export function normalizeQuestion(question) {
       ? question.options.slice(0, MAX_MCQ_OPTIONS).map((option) => String(option ?? "").trim())
       : [];
 
+  const materialSetId =
+    String(question.materialId ?? question.materialSetId ?? "").trim() || undefined;
+  const materialSetName =
+    String(
+      question.materialName ?? question.materialSetName ?? question.setName ?? ""
+    ).trim() || undefined;
+
   let base = {
     ...question,
     type,
     options,
     level: String(question.level ?? "").trim(),
-    materialSetId: String(question.materialSetId ?? "").trim() || undefined,
-    materialSetName:
-      String(question.materialSetName ?? question.setName ?? "").trim() || undefined,
+    materialSetId,
+    materialSetName,
+    materialId: materialSetId,
+    materialName: materialSetName,
   };
 
   if (type === "writing") {
@@ -156,6 +164,13 @@ export function addQuestionsBulk(items, { materialSetId = "", materialSetName = 
 
   const newItems = items.map((item, index) => {
     const type = resolveQuestionType(item);
+    const resolvedMaterialSetId =
+      String(item.materialId ?? item.materialSetId ?? sharedMaterialSetId ?? "").trim() ||
+      undefined;
+    const resolvedMaterialSetName =
+      String(item.materialName ?? item.materialSetName ?? sharedMaterialSetName ?? "").trim() ||
+      undefined;
+
     let question = {
       id: `qb-${baseTime + index}-${Math.random().toString(36).slice(2, 11)}`,
       type,
@@ -167,9 +182,10 @@ export function addQuestionsBulk(items, { materialSetId = "", materialSetName = 
           ? item.options.map((option) => String(option).trim())
           : [],
       level: String(item.level ?? "").trim(),
-      materialSetId: String(item.materialSetId ?? sharedMaterialSetId ?? "").trim() || undefined,
-      materialSetName:
-        String(item.materialSetName ?? sharedMaterialSetName ?? "").trim() || undefined,
+      materialSetId: resolvedMaterialSetId,
+      materialSetName: resolvedMaterialSetName,
+      materialId: resolvedMaterialSetId,
+      materialName: resolvedMaterialSetName,
       createdAt: new Date().toISOString(),
     };
 
@@ -206,7 +222,11 @@ export function removeReadingPassageGroup(passageId) {
 }
 
 export function removeQuestionsByMaterialSet(materialSetId) {
-  const next = loadQuestionBank().filter((q) => q.materialSetId !== materialSetId);
+  const targetId = String(materialSetId ?? "").trim();
+  const next = loadQuestionBank().filter((q) => {
+    const id = String(q.materialId ?? q.materialSetId ?? "").trim();
+    return id !== targetId;
+  });
   writeJson(QUESTION_BANK_KEY, next);
   return next;
 }

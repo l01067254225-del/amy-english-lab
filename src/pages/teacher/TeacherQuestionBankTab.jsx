@@ -82,6 +82,7 @@ export default function TeacherQuestionBankTab() {
         q.answer,
         q.passage,
         q.materialSetName,
+        q.materialName,
         q.givenWords,
         getSubjectLabel(q.subject),
         ...(q.options ?? []),
@@ -94,7 +95,9 @@ export default function TeacherQuestionBankTab() {
 
   const standaloneQuestions = useMemo(() => {
     if (filterSubject === "vocab") return [];
-    return filteredQuestions.filter((question) => !question.materialSetId);
+    return filteredQuestions.filter(
+      (question) => !(question.materialId ?? question.materialSetId)
+    );
   }, [filteredQuestions, filterSubject]);
 
   const displayList = useMemo(
