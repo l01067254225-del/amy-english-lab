@@ -4,11 +4,11 @@ import { shouldShowReadingPassage } from "../utils/examTakeView";
 import { gradeQuestion } from "../utils/grade";
 import { getIncorrectQuestionItems } from "../utils/incorrectAnswerClinic";
 import {
-  incorrectAnswerCloseBtnStyle,
-  incorrectAnswerFooterStyle,
-  incorrectAnswerPrimaryBtnStyle,
-  incorrectAnswerSecondaryBtnStyle,
-} from "./incorrectAnswerModalStyles";
+  IncorrectAnswerCloseButton,
+  IncorrectAnswerRetryButton,
+  IncorrectAnswerSubmitButton,
+} from "./IncorrectAnswerModalButtons";
+import { incorrectAnswerFooterStyle } from "./incorrectAnswerModalStyles";
 
 export default function IncorrectAnswerClinicModal({ result, studentName, onClose }) {
   const items = useMemo(() => getIncorrectQuestionItems(result), [result]);
@@ -30,10 +30,6 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
     setSubmitted(false);
   };
 
-  const handleClearAnswers = () => {
-    setAnswers({});
-  };
-
   const scoreSummary = useMemo(() => {
     if (!submitted) return null;
     let correct = 0;
@@ -51,9 +47,7 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
           <p style={{ margin: 0, color: "#64748b" }}>오답 문항이 없습니다.</p>
           <div style={incorrectAnswerFooterStyle}>
-            <button type="button" onClick={onClose} style={incorrectAnswerCloseBtnStyle}>
-              닫기
-            </button>
+            <IncorrectAnswerCloseButton onClick={onClose} />
           </div>
         </div>
       </div>
@@ -72,11 +66,6 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
               {studentName || "학생"} · {result.testTitle} · 오답 {items.length}문항
             </p>
           </div>
-          {!submitted ? (
-            <button type="button" onClick={handleSubmit} style={incorrectAnswerPrimaryBtnStyle}>
-              제출
-            </button>
-          ) : null}
         </div>
 
         {submitted && scoreSummary && (
@@ -100,16 +89,17 @@ export default function IncorrectAnswerClinicModal({ result, studentName, onClos
         </div>
 
         <div style={incorrectAnswerFooterStyle}>
-          <button
-            type="button"
-            onClick={submitted ? handleRetry : handleClearAnswers}
-            style={incorrectAnswerSecondaryBtnStyle}
-          >
-            다시 풀기
-          </button>
-          <button type="button" onClick={onClose} style={incorrectAnswerCloseBtnStyle}>
-            닫기
-          </button>
+          {!submitted ? (
+            <>
+              <IncorrectAnswerCloseButton onClick={onClose} />
+              <IncorrectAnswerSubmitButton onClick={handleSubmit} />
+            </>
+          ) : (
+            <>
+              <IncorrectAnswerRetryButton onClick={handleRetry} />
+              <IncorrectAnswerCloseButton onClick={onClose} />
+            </>
+          )}
         </div>
       </div>
     </div>
