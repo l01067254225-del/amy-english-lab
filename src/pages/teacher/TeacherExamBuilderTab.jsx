@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
+import ExamSetEditModal from "../../components/ExamSetEditModal";
 import {
   addExamSet,
+  deleteExamSet,
   filterQuestionsByLevel,
   getSubjectLabel,
   loadExamSets,
   loadQuestionBank,
   SUBJECT_OPTIONS,
+  updateExamSet,
 } from "../../utils/questionBankStorage";
+import { getExamDeploymentInfo } from "../../utils/examDeployment";
+import { buildExamPayloadFromSelection } from "../../utils/examSetBuilder";
 import { formatTestDate, getTodayDateString, LEVEL_OPTIONS } from "../../utils/levels";
-import { buildVocaExamQuestions, getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
-import { buildSetNameList, drawQuestionsFromPool } from "../../utils/examSetStorage";
+import { getMixExamBreakdown, VOCA_EXAM_TYPES } from "../../utils/vocaExamBuilder";
+import { buildSetNameList } from "../../utils/examSetStorage";
 import { filterVocaSetsByLevel, loadVocaSets } from "../../utils/vocaSetStorage";
 import {
   btnPrimary,
@@ -46,6 +51,8 @@ export default function TeacherExamBuilderTab() {
   const [vocaExamType, setVocaExamType] = useState("meaning");
   const [drawCount, setDrawCount] = useState("");
   const [buildError, setBuildError] = useState("");
+  const [editTarget, setEditTarget] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     setQuestionBank(loadQuestionBank());
@@ -145,116 +152,65 @@ export default function TeacherExamBuilderTab() {
   };
 
   const handleBuildExam = () => {
-    if (!examTitle.trim()) {
-      setBuildError("시험지 제목을 입력해 주세요.");
-      return;
-    }
-    if (!targetLevel) {
-      setBuildError("대상 레벨을 선택해 주세요.");
-      return;
-    }
-    if (!filterSubject) {
-      setBuildError("과목을 선택해 주세요.");
-      return;
-    }
-    if (!testDate) {
-      setBuildError("시험 날짜를 선택해 주세요.");
-      return;
-    }
-    if (selectedSetsData.length === 0) {
-      setBuildError("시험 자료명을 하나 이상 선택해 주세요.");
-      return;
-    }
-
-    const requestedCount = Number(drawCount);
-    if (!Number.isFinite(requestedCount) || requestedCount <= 0) {
-      setBuildError("출제 문항 수를 1 이상 입력해 주세요.");
-      return;
-    }
-
-    if (isVocabMode) {
-      const words = selectedSetsData.flatMap((entry) => entry.words ?? []);
-      if (words.length === 0) {
-        setBuildError("선택한 자료에 등록된 단어가 없습니다.");
-        return;
-      }
-      if (requestedCount > words.length) {
-        setBuildError(`출제 문항 수는 선택한 자료 단어 수(${words.length}개)를 넘을 수 없습니다.`);
-        return;
-      }
-
-      const generated = buildVocaExamQuestions(words, {
-        examType: vocaExamType,
-        drawCount: requestedCount,
-      }).map((question) => ({ ...question, level: targetLevel }));
-
-      if (generated.length === 0) {
-        setBuildError("시험 문항을 생성하지 못했습니다.");
-        return;
-      }
-
-      const next = addExamSet({
-        title: examTitle.trim(),
-        questions: generated,
-        targetLevel,
-        testDate,
-        setSource: {
-          setNames: selectedSetNames,
-          subject: filterSubject,
-          drawCount: requestedCount,
-          examType: vocaExamType,
-        },
-        vocaSource: {
-          setIds: selectedSetsData.flatMap((entry) => entry.setIds ?? []),
-          examType: vocaExamType,
-          drawCount: requestedCount,
-        },
-      });
-      setExamSets(next);
-      setExamTitle("");
-      setSelectedSetNames([]);
-      setSelectedSetsData([]);
-      setDrawCount("");
-      setBuildError("");
-      return;
-    }
-
-    const questionPool = selectedSetsData.flatMap((entry) => entry.questions ?? []);
-    if (questionPool.length === 0) {
-      setBuildError("선택한 자료에 포함된 문제가 없습니다.");
-      return;
-    }
-    if (requestedCount > questionPool.length) {
-      setBuildError(
-        `출제 문항 수는 선택한 자료의 문항 수(${questionPool.length}개)를 넘을 수 없습니다.`
-      );
-      return;
-    }
-
-    const selectedQuestions = drawQuestionsFromPool(questionPool, requestedCount);
-
-    const next = addExamSet({
-      title: examTitle.trim(),
-      questions: selectedQuestions,
+    const built = buildExamPayloadFromSelection({
+      examTitle,
       targetLevel,
       testDate,
-      setSource: {
-        setNames: selectedSetNames,
-        subject: filterSubject,
-        drawCount: requestedCount,
-      },
-      materialSource: {
-        materialSetIds: selectedSetsData.flatMap((entry) => entry.setIds ?? []),
-        subject: filterSubject,
-        drawCount: requestedCount,
-      },
+      filterSubject,
+      selectedSetNames,
+      selectedSetsData,
+      drawCount,
+      vocaExamType,
     });
+
+    if (!built.ok) {
+      setBuildError(built.error);
+      return;
+    }
+
+    const next = addExamSet(built.data);
     setExamSets(next);
     setExamTitle("");
     setSelectedSetNames([]);
     setSelectedSetsData([]);
     setDrawCount("");
     setBuildError("");
+  };
+
+  const handleSaveEdit = (payload) => {
+    if (!editTarget?.id) return;
+
+    setSavingEdit(true);
+    try {
+      const next = updateExamSet(editTarget.id, payload);
+      setExamSets(next);
+      setEditTarget(null);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteExam = (exam) => {
+    if (!exam?.id) return;
+
+    const { isDeployed, submissionCount } = getExamDeploymentInfo(exam.id);
+    const baseMessage = `"${exam.title}" 시험지를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`;
+
+    if (isDeployed) {
+      const confirmed = window.confirm(
+        `${baseMessage}\n\n⚠️ 이 시험지는 학생 ${submissionCount}명(건)에게 배포·응시된 기록이 있습니다. 삭제하면 시험지와 연결된 응시 데이터는 남지만, 학생 대시보드에서 더 이상 이 시험을 볼 수 없습니다.\n\n정말 삭제하시겠습니까?`
+      );
+      if (!confirmed) return;
+    } else {
+      const confirmed = window.confirm(baseMessage);
+      if (!confirmed) return;
+    }
+
+    const next = deleteExamSet(exam.id);
+    setExamSets(next);
+    if (editTarget?.id === exam.id) {
+      setEditTarget(null);
+    }
   };
 
   const countUnit = isVocabMode ? "단어" : "문항";
@@ -487,7 +443,10 @@ export default function TeacherExamBuilderTab() {
           <p style={{ margin: 0, color: "#64748b" }}>아직 생성된 시험지가 없습니다.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {examSets.map((exam) => (
+            {examSets.map((exam) => {
+              const deployment = getExamDeploymentInfo(exam.id);
+
+              return (
               <div
                 key={exam.id}
                 style={{
@@ -519,14 +478,55 @@ export default function TeacherExamBuilderTab() {
                       : ""}
                   </span>
                 </div>
-                <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
-                  {exam.questions.length}문항이 생성되었습니다.
-                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                    {exam.questions.length}문항이 생성되었습니다.
+                    {deployment.isDeployed
+                      ? ` · 학생 응시 ${deployment.submissionCount}건`
+                      : ""}
+                  </p>
+                  <div style={examCardActionsStyle}>
+                    <button
+                      type="button"
+                      style={btnSecondary}
+                      onClick={() => setEditTarget(exam)}
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      style={examDeleteBtnStyle}
+                      onClick={() => handleDeleteExam(exam)}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {editTarget ? (
+        <ExamSetEditModal
+          exam={editTarget}
+          onClose={() => {
+            if (!savingEdit) setEditTarget(null);
+          }}
+          onSave={handleSaveEdit}
+          saving={savingEdit}
+        />
+      ) : null}
     </div>
   );
 }
@@ -652,4 +652,21 @@ const drawOptionHintStyle = {
   margin: "8px 0 0",
   fontSize: 13,
   color: "#64748b",
+};
+
+const examCardActionsStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const examDeleteBtnStyle = {
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
 };

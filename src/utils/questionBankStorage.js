@@ -339,6 +339,43 @@ export function addExamSet({
   return next;
 }
 
+export function updateExamSet(examId, updates) {
+  const list = loadExamSets();
+  const index = list.findIndex((exam) => exam.id === examId);
+  if (index < 0) return list;
+
+  const current = list[index];
+  const questions = ensureArray(updates.questions ?? current.questions).map(normalizeQuestion);
+
+  const nextItem = {
+    id: examId,
+    createdAt: current.createdAt,
+    title: String(updates.title ?? current.title).trim(),
+    targetLevel: String(updates.targetLevel ?? current.targetLevel ?? "").trim(),
+    testDate: String(updates.testDate ?? current.testDate ?? "").trim(),
+    questionIds: questions.map((question) => question.id),
+    questions,
+    setSource: updates.setSource ?? null,
+  };
+
+  if (updates.vocaSource) {
+    nextItem.vocaSource = updates.vocaSource;
+  } else if (updates.materialSource) {
+    nextItem.materialSource = updates.materialSource;
+  }
+
+  const next = [...list];
+  next[index] = nextItem;
+  writeJson(EXAM_SETS_KEY, next);
+  return next;
+}
+
+export function deleteExamSet(examId) {
+  const next = loadExamSets().filter((exam) => exam.id !== examId);
+  writeJson(EXAM_SETS_KEY, next);
+  return next;
+}
+
 export function filterQuestionsByLevel(questions, targetLevel) {
   const list = ensureArray(questions);
   if (!targetLevel) return list;
