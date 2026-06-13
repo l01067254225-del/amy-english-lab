@@ -18,13 +18,15 @@ function formatClinicUserAnswer(question, userAnswer) {
   return raw;
 }
 
-export function triggerIncorrectNotePrint() {
+export function triggerIncorrectNotePrint(printRootId = "incorrect-note-print-root") {
   document.body.classList.add("incorrect-note-printing");
+  document.body.dataset.incorrectNotePrintRoot = printRootId;
   window.print();
   window.addEventListener(
     "afterprint",
     () => {
       document.body.classList.remove("incorrect-note-printing");
+      delete document.body.dataset.incorrectNotePrintRoot;
     },
     { once: true }
   );

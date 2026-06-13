@@ -1,9 +1,11 @@
+import IncorrectAnswerCorrectionField from "./IncorrectAnswerCorrectionField";
 import { formatStoredUserAnswer } from "../utils/examRetestStorage";
 import { formatQuestionAnswer, getSubjectLabel } from "../utils/questionBankStorage";
 import { shouldShowReadingPassage } from "../utils/examTakeView";
 import { ensureArray } from "../utils/safeData";
+import "../styles/incorrectAnswerPrint.css";
 
-function QuestionBlock({ item, index, questions }) {
+function QuestionBlock({ item, index, questions, correctionValue, onCorrectionChange }) {
   const { question, num, userAnswer } = item;
   const showPassage = shouldShowReadingPassage(question, questions, index);
   const isObjective = question.type === "objective";
@@ -67,11 +69,26 @@ function QuestionBlock({ item, index, questions }) {
           <span style={correctAnswerStyle}>{correctAnswerText}</span>
         </p>
       </div>
+
+      <IncorrectAnswerCorrectionField
+        subject={question.subject}
+        questionNum={num}
+        value={correctionValue}
+        onChange={onCorrectionChange}
+      />
     </section>
   );
 }
 
-export default function IncorrectAnswerNotePreview({ items, studentName, testTitle, submittedAt }) {
+export default function IncorrectAnswerNotePreview({
+  items,
+  studentName,
+  testTitle,
+  submittedAt,
+  correctionNotes = {},
+  onCorrectionChange,
+  printRootId = "incorrect-note-modal-print-root",
+}) {
   const safeItems = ensureArray(items);
   if (safeItems.length === 0) {
     return (
@@ -82,9 +99,14 @@ export default function IncorrectAnswerNotePreview({ items, studentName, testTit
   }
 
   const questions = safeItems.map((item) => item.question);
+  const noteKey = (item) => String(item.questionId ?? item.num);
 
   return (
-    <article className="incorrect-note-sheet" style={sheetStyle}>
+    <article
+      id={printRootId}
+      className="incorrect-note-sheet incorrect-note-preview-sheet"
+      style={sheetStyle}
+    >
       <header style={headerStyle}>
         <p style={brandStyle}>AMY ENGLISH LAB</p>
         <h1 style={titleStyle}>오답 노트 · {studentName || "학생"}</h1>
@@ -101,6 +123,8 @@ export default function IncorrectAnswerNotePreview({ items, studentName, testTit
           item={item}
           index={index}
           questions={questions}
+          correctionValue={correctionNotes[noteKey(item)] ?? ""}
+          onCorrectionChange={(value) => onCorrectionChange?.(noteKey(item), value)}
         />
       ))}
 

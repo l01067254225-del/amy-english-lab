@@ -9,11 +9,14 @@
   }
 
   body.incorrect-note-printing #incorrect-note-print-root,
-  body.incorrect-note-printing #incorrect-note-print-root * {
+  body.incorrect-note-printing #incorrect-note-print-root *,
+  body.incorrect-note-printing #incorrect-note-modal-print-root,
+  body.incorrect-note-printing #incorrect-note-modal-print-root * {
     visibility: visible !important;
   }
 
-  body.incorrect-note-printing #incorrect-note-print-root {
+  body.incorrect-note-printing #incorrect-note-print-root,
+  body.incorrect-note-printing #incorrect-note-modal-print-root {
     position: absolute;
     left: 0;
     top: 0;
@@ -41,4 +44,58 @@
     break-inside: avoid-page;
     page-break-inside: avoid;
   }
+
+  .incorrect-note-correction-textarea {
+    border: 1px solid #94a3b8 !important;
+    border-radius: 4px !important;
+    background: white !important;
+    color: #0f172a !important;
+    resize: none !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .incorrect-note-correction-textarea--single {
+    min-height: 28px !important;
+    border-bottom: 2px solid #334155 !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0 !important;
+    padding: 4px 0 !important;
+  }
+
+  .incorrect-note-correction-textarea--multi {
+    min-height: 72px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    padding: 8px 10px !important;
+  }
+
+  .incorrect-note-correction-textarea::placeholder {
+    color: transparent !important;
+  }
+
+  .incorrect-note-correction-label {
+    color: #334155 !important;
+    font-weight: 800 !important;
+  }
+}
+
+/* 화면용 — 과목별 높이 */
+.incorrect-note-correction-textarea--single {
+  min-height: 28px;
+  max-height: 40px;
+}
+
+.incorrect-note-correction-textarea--multi {
+  min-height: 72px;
+}
+
+.incorrect-note-correction-textarea:focus {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  border-color: #60a5fa;
 }

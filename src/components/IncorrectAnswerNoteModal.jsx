@@ -1,22 +1,27 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatDate } from "../services/resultsApi";
 import {
   countIncorrectAnswers,
-  getClinicRetestSummary,
-  getIncorrectItemsForPrint,
   getIncorrectQuestionItems,
 } from "../utils/incorrectAnswerClinic";
 import IncorrectAnswerNotePreview from "./IncorrectAnswerNotePreview";
-import IncorrectAnswerPrintSheet, {
-  triggerIncorrectNotePrint,
-} from "./IncorrectAnswerPrintSheet";
+import { triggerIncorrectNotePrint } from "./IncorrectAnswerPrintSheet";
 import "../styles/incorrectAnswerPrint.css";
+
+const MODAL_PRINT_ROOT_ID = "incorrect-note-modal-print-root";
 
 export default function IncorrectAnswerNoteModal({ result, studentName, onClose }) {
   const items = useMemo(() => getIncorrectQuestionItems(result), [result]);
-  const printItems = useMemo(() => getIncorrectItemsForPrint(result), [result]);
   const incorrectCount = useMemo(() => countIncorrectAnswers(result), [result]);
-  const clinicRetestSummary = useMemo(() => getClinicRetestSummary(result), [result]);
+  const [correctionNotes, setCorrectionNotes] = useState({});
+
+  const handleCorrectionChange = useCallback((key, value) => {
+    setCorrectionNotes((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handlePrint = useCallback(() => {
+    triggerIncorrectNotePrint(MODAL_PRINT_ROOT_ID);
+  }, []);
 
   if (!result) return null;
 
@@ -41,7 +46,7 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
           </div>
           <div style={actionRowStyle}>
             {incorrectCount > 0 && (
-              <button type="button" onClick={triggerIncorrectNotePrint} style={printBtnStyle}>
+              <button type="button" onClick={handlePrint} style={printBtnStyle}>
                 인쇄
               </button>
             )}
@@ -57,18 +62,12 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
             studentName={studentName}
             testTitle={result.testTitle}
             submittedAt={submittedLabel}
+            correctionNotes={correctionNotes}
+            onCorrectionChange={handleCorrectionChange}
+            printRootId={MODAL_PRINT_ROOT_ID}
           />
         </div>
       </div>
-
-      {incorrectCount > 0 && (
-        <IncorrectAnswerPrintSheet
-          studentName={studentName}
-          testTitle={result.testTitle}
-          items={printItems}
-          clinicRetestSummary={clinicRetestSummary}
-        />
-      )}
     </div>
   );
 }
