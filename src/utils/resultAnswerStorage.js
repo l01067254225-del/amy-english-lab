@@ -1,5 +1,8 @@
 import { isAnswerProvided } from "./examSubmissionValidation";
-import { syncWrongAnswerHistoryOnResult } from "./wrongAnswerHistory";
+import {
+  resolveFirstExamAnswer,
+  syncWrongAnswerHistoryOnResult,
+} from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
 
 /** 제출 유효성: 빈 문자열도 미입력 */
@@ -61,21 +64,46 @@ function readResponseListEntry(result, questionId) {
   return null;
 }
 
-function readDetailDirectFields(detail) {
+function readDetailDirectFields(detail, { preferOriginal = false } = {}) {
+  if (preferOriginal) {
+    return coalesceStudentAnswer(
+      detail?.firstSubmissionUserAnswer,
+      detail?.examRetest?.previousUserAnswer
+    );
+  }
+
   return coalesceStudentAnswer(
     detail?.userAnswer,
     detail?.studentAnswer,
     detail?.userResponse,
     detail?.studentResponse,
     detail?.response,
-    detail?.examRetest?.userAnswer,
     detail?.examRetest?.previousUserAnswer,
+    detail?.examRetest?.userAnswer,
     detail?.examRetest?.studentAnswer,
     detail?.examRetest?.userResponse,
     detail?.clinicRetest?.userAnswer,
     detail?.clinicRetest?.studentAnswer,
     detail?.clinicRetest?.userResponse
   );
+}
+
+/** 재시험·클리닉 이후에도 1차 제출 답안 */
+export function resolveOriginalStudentAnswer(detail, result) {
+  if (!detail) return null;
+
+  const resolved = resolveFirstExamAnswer(result, {
+    questionId: detail.questionId,
+    num: detail.num,
+  });
+  if (resolved.status === "found") {
+    return resolved.user_answer;
+  }
+
+  const fromDetail = readDetailDirectFields(detail, { preferOriginal: true });
+  if (fromDetail != null) return fromDetail;
+
+  return null;
 }
 
 export function resolveDetailStudentAnswer(detail, result) {
@@ -126,7 +154,18 @@ export function enrichResultRecordForSave(record) {
       answers: answersMap,
     });
 
-    return attachStudentAnswerFields(detail, resolved ?? "");
+    const attached = attachStudentAnswerFields(detail, resolved ?? "");
+    const preservedFirst =
+      detail?.firstSubmissionUserAnswer ??
+      detail?.examRetest?.previousUserAnswer ??
+      (Number(record.attemptCount ?? 1) === 1 ? attached.userAnswer : null);
+
+    return {
+      ...attached,
+      ...(preservedFirst != null
+        ? { firstSubmissionUserAnswer: String(preservedFirst) }
+        : {}),
+    };
   });
 
   const normalizedAnswers = { ...answersMap };

@@ -336,6 +336,14 @@ export function resolveFirstExamAnswer(result, { questionId, num } = {}) {
     return found(detail.examRetest.previousUserAnswer, false, "exam_retest_join");
   }
 
+  if (detail?.firstSubmissionUserAnswer != null) {
+    return found(
+      detail.firstSubmissionUserAnswer,
+      gradingCorrect,
+      "first_submission_snapshot"
+    );
+  }
+
   if (Number(synced.attemptCount ?? 1) === FIRST_ATTEMPT_NUMBER) {
     const fromMap = readSubmissionFromAnswersMap(synced, questionId);
     if (isUserAnswerPresent(fromMap)) {
@@ -645,17 +653,56 @@ export function getWrongAnswersGroupedByAttempt(result, questionId) {
   }));
 }
 
-/** 1차 시험에서 틀린 답 (attempt_logs only) */
-export function getFirstAttemptWrongAnswer(result, questionId) {
-  const logs = getWrongAttemptLogsForQuestion(result, questionId).filter(
-    (log) => Number(log.attemptNumber) === 1 && log.attemptType === ATTEMPT_TYPES.EXAM
+/** 1차 시험 제출 답안 — 재시험/최종값 사용 안 함 */
+export function resolveOriginalSubmissionAnswer(result, { questionId, num } = {}) {
+  return resolveFirstExamAnswer(result, { questionId, num });
+}
+
+/** 1차 시험에서 틀렸던 문항 ID */
+export function getOriginallyWrongQuestionIds(result) {
+  const synced = syncWrongAnswerHistoryOnResult(result);
+  const ids = getRetestReviewQuestionIds(synced);
+
+  ensureArray(synced.details).forEach((detail) => {
+    if (!detail?.questionId) return;
+    if (detail.examRetest || detail.correct === false || detail.isCorrect === false) {
+      ids.add(detail.questionId);
+    }
+  });
+
+  return ids;
+}
+
+export function isOriginallyWrongDetail(detail, result) {
+  if (!detail) return false;
+  if (detail.questionId == null && detail.num == null) return false;
+
+  const ids = getOriginallyWrongQuestionIds(result);
+  if (detail.questionId != null && ids.has(detail.questionId)) return true;
+
+  return isWrongDetail(detail);
+}
+
+function isWrongDetail(detail) {
+  if (!detail) return false;
+  if (detail.isCorrect === false) return true;
+  if (detail.correct === false) return true;
+  return false;
+}
+
+/** 1차 시험에서 틀린 답 (attempt_logs · 1차 스냅샷) */
+export function getFirstAttemptWrongAnswer(result, questionId, num = null) {
+  const resolved = resolveFirstExamAnswer(result, { questionId, num });
+  if (resolved.status === "found") {
+    return resolved.user_answer;
+  }
+
+  const logs = getWrongAttemptLogsForQuestion(result, questionId, num).filter(
+    (log) => Number(log.attemptNumber ?? log.attempt_number) === 1
   );
   if (logs.length > 0) return readRawUserAnswerFromLog(logs[0]);
 
-  const fallbackFirst = getWrongAttemptLogsForQuestion(result, questionId).find(
-    (log) => Number(log.attemptNumber ?? log.attempt_number) === 1
-  );
-  return fallbackFirst ? readRawUserAnswerFromLog(fallbackFirst) : null;
+  return null;
 }
 
 /** @deprecated lastSubmission 폴백 제거 — attempt_logs 오답 중 마지막 시점 */

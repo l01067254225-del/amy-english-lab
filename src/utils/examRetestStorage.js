@@ -4,6 +4,7 @@ import {
   attachStudentAnswerFields,
   isAnswerMissingForDisplay,
   resolveDetailStudentAnswer,
+  resolveOriginalStudentAnswer,
 } from "./resultAnswerStorage";
 import {
   appendTestAttemptToResult,
@@ -11,6 +12,7 @@ import {
   getFirstAttemptWrongAnswer,
   getRetestReviewQuestionIds,
   getTestAttempts,
+  resolveFirstExamAnswer,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
@@ -91,11 +93,36 @@ export function mergeExamRetestResult(previousResult, newRecord) {
     const wasWrong = previousDetail && previousDetail.correct === false;
     const nowCorrect = newDetail.correct === true;
     const userAnswer = resolveDetailStudentAnswer(newDetail, newRecord);
-    const previousUserAnswer = previousDetail
-      ? resolveDetailStudentAnswer(previousDetail, previousResult)
+
+    const prevSynced = previousResult ? syncWrongAnswerHistoryOnResult(previousResult) : null;
+    const firstAttemptResolved = prevSynced
+      ? resolveFirstExamAnswer(prevSynced, {
+          questionId: newDetail.questionId,
+          num: newDetail.num,
+        })
       : null;
 
+    const previousUserAnswer =
+      firstAttemptResolved?.status === "found"
+        ? firstAttemptResolved.user_answer
+        : previousDetail
+          ? resolveOriginalStudentAnswer(previousDetail, previousResult) ??
+            resolveDetailStudentAnswer(previousDetail, previousResult)
+          : null;
+
     let baseDetail = attachStudentAnswerFields(newDetail, userAnswer ?? "");
+
+    if (previousDetail?.firstSubmissionUserAnswer != null) {
+      baseDetail = {
+        ...baseDetail,
+        firstSubmissionUserAnswer: previousDetail.firstSubmissionUserAnswer,
+      };
+    } else if (previousUserAnswer != null) {
+      baseDetail = {
+        ...baseDetail,
+        firstSubmissionUserAnswer: previousUserAnswer,
+      };
+    }
 
     if (!wasWrong) {
       return baseDetail;

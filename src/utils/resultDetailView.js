@@ -7,7 +7,7 @@ import {
   FIRST_EXAM_ANSWER_COLUMN_LABEL,
   getFirstAttemptSession,
   isUserAnswerPresent,
-  resolveFirstExamAnswerWithRecovery,
+  resolveFirstExamAnswer,
   syncWrongAnswerHistoryOnResult,
 } from "./wrongAnswerHistory";
 import { ensureArray } from "./safeData";
@@ -83,8 +83,6 @@ export function buildAttemptWiseDetailView(result) {
           num: record.num,
         }));
 
-  let hasRecovery = false;
-
   const rows = rowSource
     .map((detail) => {
       const questionKey =
@@ -95,9 +93,8 @@ export function buildAttemptWiseDetailView(result) {
       const questionId = detail.questionId ?? meta?.questionId;
       const num = detail.num ?? meta?.num;
 
-      const resolved = resolveFirstExamAnswerWithRecovery(synced, { questionId, num });
+      const resolved = resolveFirstExamAnswer(synced, { questionId, num });
       const firstExamAnswer = buildAnswerCell(resolved, question);
-      if (firstExamAnswer.recovery) hasRecovery = true;
 
       return {
         num,
@@ -111,11 +108,9 @@ export function buildAttemptWiseDetailView(result) {
     })
     .sort((a, b) => Number(a.num ?? 0) - Number(b.num ?? 0));
 
-  const isReady = rows.some(
-    (row) => row.firstExamAnswer?.status === "found" || row.firstExamAnswer?.status === "recovering"
-  );
+  const isReady = rows.some((row) => row.firstExamAnswer?.status === "found");
 
-  const view = { column, rows, isReady, hasRecovery };
+  const view = { column, rows, isReady, hasRecovery: false };
   debugLogAttemptLogsIfEmpty(synced, view);
   return view;
 }
