@@ -82,9 +82,3 @@ const bootTextStyle = {
   color: "#64748b",
   fontWeight: 600,
 };
-git add .
-git commit -m "문제 데이터 강제 그룹화 및 세트 단위 선택 방식 UI 전면 적용"
-git push origin main
-git add .
-git commit-m "UI 강제 개편: 개별 문항 나열 제거 및 시험 자료명(세트) 선택 UI 적용"
-git push origin main
