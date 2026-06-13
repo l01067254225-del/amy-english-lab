@@ -16,7 +16,7 @@ import {
   SET_MIGRATION_VERSION,
   suggestSetName,
 } from "./examSetStorage";
-import { normalizeWritingFields } from "./writingQuestion";
+import { formatAcceptedAnswerDisplay, splitAcceptedAnswers } from "./grade";
 import { isReadingSubject, resolveQuestionOrder, sortReadingQuestions } from "./readingQuestionOrder";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
@@ -341,14 +341,25 @@ export function removeQuestionsByMaterialSet(materialSetId) {
 export function formatQuestionAnswer(question) {
   const q = normalizeQuestion(question);
   if (q.type === "writing") {
-    return q.answer;
+    return formatAcceptedAnswerDisplay(q.answer);
   }
   if (q.type === "objective") {
+    const acceptedParts = splitAcceptedAnswers(q.answer);
+    if (acceptedParts.length > 1) {
+      return acceptedParts
+        .map((part) => {
+          const index = Number(part) - 1;
+          const optionText = q.options[index];
+          return optionText ? `${part}번 · ${optionText}` : `${part}번`;
+        })
+        .join(" / ");
+    }
+
     const index = Number(q.answer) - 1;
     const optionText = q.options[index];
     return optionText ? `${q.answer}번 · ${optionText}` : `${q.answer}번`;
   }
-  return q.answer;
+  return formatAcceptedAnswerDisplay(q.answer);
 }
 
 export function loadExamSets() {

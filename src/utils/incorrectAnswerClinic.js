@@ -1,4 +1,5 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
+import { isAnswerCorrect } from "./grade";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { ensureArray } from "./safeData";
 import {
@@ -46,6 +47,10 @@ export function getIncorrectQuestionItems(result) {
 
       const userAnswer =
         getFirstAttemptWrongAnswer(synced, detail.questionId, detail.num) ?? "";
+
+      if (isAnswerCorrect(question, userAnswer)) {
+        return null;
+      }
 
       return {
         num: detail.num,

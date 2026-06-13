@@ -1,4 +1,5 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
+import { isAnswerCorrect } from "./grade";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import { formatStoredUserAnswer } from "./examRetestStorage";
 import { debugLogAttemptLogsIfEmpty } from "./resultDetailLoader";
@@ -41,11 +42,16 @@ function buildQuestionMetaMap(result) {
 function buildAnswerCell(resolved, question) {
   const hasRecord = resolved.status === "found" || resolved.status === "recovering";
   const rawUserAnswer = resolved.user_answer;
+  const storedCorrect = resolved.is_correct ?? null;
+  const isCorrect =
+    hasRecord && question && isUserAnswerPresent(rawUserAnswer)
+      ? isAnswerCorrect(question, rawUserAnswer)
+      : storedCorrect;
 
   return {
     userAnswer: hasRecord ? formatStoredUserAnswer(question, rawUserAnswer) : null,
     rawUserAnswer: hasRecord ? rawUserAnswer : null,
-    isCorrect: resolved.is_correct ?? null,
+    isCorrect,
     status: resolved.status,
     source: resolved.source,
     recovery: Boolean(resolved.recovery),

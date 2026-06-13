@@ -1,4 +1,5 @@
 import { resolveQuestionForDetail } from "./cutoffPolicy";
+import { isAnswerCorrect } from "./grade";
 import { formatQuestionAnswer, loadExamSets } from "./questionBankStorage";
 import {
   attachStudentAnswerFields,
@@ -62,6 +63,10 @@ export function getRetestReviewItems(result) {
       if (!question) return null;
 
       const wrongAnswer = getFirstAttemptWrongAnswer(synced, detail.questionId);
+
+      if (isAnswerCorrect(question, wrongAnswer)) {
+        return null;
+      }
 
       return {
         num: detail.num,

@@ -13,10 +13,23 @@ export function normalizeSentence(text) {
 export function splitAcceptedAnswers(answerText) {
   const source = normalize(answerText);
   if (!source) return [];
+  if (!source.includes("/")) return [source];
   return source
     .split(/\s*\/\s*/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+export function hasMultipleAcceptedAnswers(answerText) {
+  return splitAcceptedAnswers(answerText).length > 1;
+}
+
+/** UI·오답 노트용 정답 표시 문자열 */
+export function formatAcceptedAnswerDisplay(answerText) {
+  const accepted = splitAcceptedAnswers(answerText);
+  if (accepted.length === 0) return "";
+  if (accepted.length === 1) return accepted[0];
+  return accepted.join(" / ");
 }
 
 function collapseWhitespace(text) {
@@ -32,16 +45,17 @@ function normalizeStrictAnswer(text) {
 }
 
 function isStrictTextQuestion(question) {
-  return question?.type === "writing";
+  return question?.type === "writing" || question?.subject === "writing";
 }
 
-function matchesAnyAccepted(userAnswer, acceptedAnswers, { strict = false } = {}) {
-  const normalizeFn = strict ? normalizeStrictAnswer : normalizeShortAnswer;
-  const userNorm = normalizeFn(userAnswer);
+function matchesAnyAccepted(userAnswer, acceptedAnswers, { strict = false, normalizeFn } = {}) {
+  const normalizeAnswer =
+    normalizeFn ?? (strict ? normalizeStrictAnswer : normalizeShortAnswer);
+  const userNorm = normalizeAnswer(userAnswer);
   if (!userNorm) return false;
 
   return acceptedAnswers.some(
-    (accepted) => normalizeFn(accepted) === userNorm
+    (accepted) => normalizeAnswer(accepted) === userNorm
   );
 }
 
@@ -54,43 +68,95 @@ function keysToSentence(question, storedAnswer) {
     .join(" ");
 }
 
-export function gradeQuestion(question, userAnswer) {
-  if (question.type === "sentence") {
-    const userSentence = keysToSentence(question, userAnswer);
-    return normalizeSentence(userSentence) === normalizeSentence(question.answer) ? 1 : 0;
+function gradeTextAnswer(question, userAnswer, { strict = false, normalizeFn } = {}) {
+  const trimmedUser = normalize(userAnswer);
+  const accepted = splitAcceptedAnswers(question.answer);
+  if (accepted.length === 0) return 0;
+
+  return matchesAnyAccepted(trimmedUser, accepted, {
+    strict,
+    normalizeFn,
+  })
+    ? 1
+    : 0;
+}
+
+function matchesObjectivePart(question, acceptedPart, trimmedUser) {
+  const userLower = trimmedUser.toLowerCase();
+  const partNorm = normalize(acceptedPart).toLowerCase();
+
+  if (userLower === partNorm) return true;
+
+  const correctIndex = Number(acceptedPart) - 1;
+  if (Number.isFinite(correctIndex) && correctIndex >= 0) {
+    const correctOption = question.options?.[correctIndex];
+    if (correctOption && userLower === normalize(correctOption).toLowerCase()) {
+      return true;
+    }
+    if (userLower === String(correctIndex + 1)) return true;
   }
 
+  return false;
+}
+
+function gradeObjective(question, userAnswer) {
   const trimmedUser = normalize(userAnswer);
+  if (!trimmedUser) return 0;
 
-  switch (question.type) {
-    case "objective": {
-      const correctIndex = Number(question.answer) - 1;
-      const correctOption = question.options?.[correctIndex];
-      const userLower = trimmedUser.toLowerCase();
-      const answerLower = normalize(question.answer).toLowerCase();
+  const accepted = splitAcceptedAnswers(question.answer);
+  if (accepted.length === 0) return 0;
 
-      if (correctOption && userLower === normalize(correctOption).toLowerCase()) {
-        return 1;
-      }
-      return userLower === answerLower ? 1 : 0;
-    }
+  if (accepted.length > 1) {
+    return accepted.some((part) => matchesObjectivePart(question, part, trimmedUser)) ? 1 : 0;
+  }
+
+  return matchesObjectivePart(question, accepted[0], trimmedUser) ? 1 : 0;
+}
+
+function gradeSentence(question, userAnswer) {
+  const userSentence = keysToSentence(question, userAnswer);
+  const accepted = splitAcceptedAnswers(question.answer);
+  if (accepted.length === 0) return 0;
+
+  return matchesAnyAccepted(userSentence, accepted, {
+    normalizeFn: normalizeSentence,
+  })
+    ? 1
+    : 0;
+}
+
+export function isAnswerCorrect(question, userAnswer) {
+  return gradeQuestion(question, userAnswer) === 1;
+}
+
+export function gradeQuestion(question, userAnswer) {
+  if (!question) return 0;
+
+  const type = question.type ?? "subjective";
+
+  if (type === "sentence") {
+    return gradeSentence(question, userAnswer);
+  }
+
+  if (type === "objective") {
+    return gradeObjective(question, userAnswer);
+  }
+
+  switch (type) {
     case "mcq":
     case "short":
     case "subjective":
     case "meaning":
     case "spelling":
     case "writing":
-    case "fill": {
-      const accepted = splitAcceptedAnswers(question.answer);
-      if (accepted.length === 0) return 0;
-      return matchesAnyAccepted(trimmedUser, accepted, {
+    case "fill":
+      return gradeTextAnswer(question, userAnswer, {
         strict: isStrictTextQuestion(question),
-      })
-        ? 1
-        : 0;
-    }
+      });
     default:
-      return 0;
+      return gradeTextAnswer(question, userAnswer, {
+        strict: isStrictTextQuestion(question),
+      });
   }
 }
 
@@ -121,6 +187,16 @@ export function flattenQuestions(baseQuestions) {
 
 export function getAnswerFeedback(question) {
   if (question.type === "objective") {
+    const accepted = splitAcceptedAnswers(question.answer);
+    if (accepted.length > 1) {
+      const labels = accepted.map((part) => {
+        const index = Number(part) - 1;
+        const optionText = question.options?.[index];
+        return optionText ? `${part}번 · ${optionText}` : `${part}번`;
+      });
+      return `정답: ${labels.join(" / ")}`;
+    }
+
     const correctIndex = Number(question.answer) - 1;
     const correctOption = question.options?.[correctIndex];
     return correctOption
