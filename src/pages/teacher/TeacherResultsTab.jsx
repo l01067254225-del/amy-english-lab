@@ -318,10 +318,6 @@ export default function TeacherResultsTab({
           result={incorrectTarget}
           studentName={incorrectTarget.studentName}
           onClose={() => setIncorrectTarget(null)}
-          onResultUpdate={(updated) => {
-            setIncorrectTarget(updated);
-            onRefresh?.();
-          }}
         />
       )}
 
