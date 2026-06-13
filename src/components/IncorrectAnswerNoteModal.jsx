@@ -28,16 +28,24 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
   const submittedLabel = formatDate(result.submittedAt);
 
   return (
-    <div style={overlayStyle} onClick={onClose}>
+    <>
       <div
-        style={modalStyle}
-        className="incorrect-note-no-print"
+        className="incorrect-note-overlay-backdrop incorrect-note-no-print"
+        style={backdropStyle}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      <div
+        className="incorrect-note-modal-shell"
+        style={modalShellStyle}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="오답 노트"
       >
-        <div style={toolbarStyle}>
+        <div className="incorrect-note-modal-card" style={cardStyle}>
+          <div className="incorrect-note-no-print" style={toolbarStyle}>
           <div>
             <h2 style={{ margin: "0 0 4px", fontSize: 20, color: "#0f172a" }}>오답 노트</h2>
             <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
@@ -56,7 +64,7 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
           </div>
         </div>
 
-        <div style={previewWrapStyle}>
+        <div className="incorrect-note-preview-wrap" style={previewWrapStyle}>
           <IncorrectAnswerNotePreview
             items={items}
             studentName={studentName}
@@ -67,31 +75,39 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
             printRootId={MODAL_PRINT_ROOT_ID}
           />
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-const overlayStyle = {
+const backdropStyle = {
   position: "fixed",
   inset: 0,
   background: "rgba(15, 23, 42, 0.55)",
+  zIndex: 1049,
+};
+
+const modalShellStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1050,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   padding: 24,
-  zIndex: 1050,
+  pointerEvents: "none",
 };
 
-const modalStyle = {
+const cardStyle = {
   width: "min(820px, 100%)",
   maxHeight: "92vh",
-  background: "white",
-  borderRadius: 16,
-  boxShadow: "0 24px 48px rgba(15, 23, 42, 0.2)",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
+  borderRadius: 16,
+  boxShadow: "0 24px 48px rgba(15, 23, 42, 0.2)",
+  pointerEvents: "auto",
 };
 
 const toolbarStyle = {
@@ -102,6 +118,7 @@ const toolbarStyle = {
   padding: "20px 24px 12px",
   borderBottom: "1px solid #e2e8f0",
   flexShrink: 0,
+  background: "white",
 };
 
 const actionRowStyle = {
@@ -113,6 +130,9 @@ const actionRowStyle = {
 const previewWrapStyle = {
   overflow: "auto",
   padding: "16px 24px 24px",
+  background: "white",
+  flex: 1,
+  minHeight: 0,
 };
 
 const printBtnStyle = {

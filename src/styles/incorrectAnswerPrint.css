@@ -4,6 +4,24 @@
     margin: 14mm 12mm;
   }
 
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body.incorrect-note-printing {
+    background: #fff !important;
+  }
+
+  /* 화면 UI만 숨김 — 인쇄 본문(#incorrect-note-*-print-root)은 제외 */
+  body.incorrect-note-printing .incorrect-note-no-print,
+  body.incorrect-note-printing .incorrect-note-overlay-backdrop {
+    display: none !important;
+  }
+
+  /* 앱 전체 숨김 후 인쇄 영역만 표시 */
   body.incorrect-note-printing * {
     visibility: hidden !important;
   }
@@ -17,20 +35,46 @@
 
   body.incorrect-note-printing #incorrect-note-print-root,
   body.incorrect-note-printing #incorrect-note-modal-print-root {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    background: white !important;
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    z-index: 2147483647 !important;
   }
 
-  .incorrect-note-no-print {
-    display: none !important;
+  body.incorrect-note-printing .incorrect-note-modal-shell,
+  body.incorrect-note-printing .incorrect-note-modal-card,
+  body.incorrect-note-printing .incorrect-note-preview-wrap {
+    position: static !important;
+    display: block !important;
+    visibility: visible !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    pointer-events: none !important;
   }
 
-  .incorrect-note-sheet {
+  body.incorrect-note-printing .incorrect-note-modal-shell *,
+  body.incorrect-note-printing .incorrect-note-modal-card *,
+  body.incorrect-note-printing .incorrect-note-preview-wrap * {
+    visibility: visible !important;
+  }
+
+  body.incorrect-note-printing .incorrect-note-sheet {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
@@ -38,17 +82,18 @@
     max-width: none !important;
     width: 100% !important;
     margin: 0 !important;
+    background: #fff !important;
   }
 
-  .incorrect-note-item {
+  body.incorrect-note-printing .incorrect-note-item {
     break-inside: avoid-page;
     page-break-inside: avoid;
   }
 
-  .incorrect-note-correction-textarea {
+  body.incorrect-note-printing .incorrect-note-correction-textarea {
     border: 1px solid #94a3b8 !important;
     border-radius: 4px !important;
-    background: white !important;
+    background: #fff !important;
     color: #0f172a !important;
     resize: none !important;
     overflow: hidden !important;
@@ -57,7 +102,7 @@
     print-color-adjust: exact;
   }
 
-  .incorrect-note-correction-textarea--single {
+  body.incorrect-note-printing .incorrect-note-correction-textarea--single {
     min-height: 28px !important;
     border-bottom: 2px solid #334155 !important;
     border-top: none !important;
@@ -67,18 +112,18 @@
     padding: 4px 0 !important;
   }
 
-  .incorrect-note-correction-textarea--multi {
+  body.incorrect-note-printing .incorrect-note-correction-textarea--multi {
     min-height: 72px !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 4px !important;
     padding: 8px 10px !important;
   }
 
-  .incorrect-note-correction-textarea::placeholder {
+  body.incorrect-note-printing .incorrect-note-correction-textarea::placeholder {
     color: transparent !important;
   }
 
-  .incorrect-note-correction-label {
+  body.incorrect-note-printing .incorrect-note-correction-label {
     color: #334155 !important;
     font-weight: 800 !important;
   }
@@ -98,4 +143,8 @@
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
   border-color: #60a5fa;
+}
+
+.incorrect-note-modal-shell {
+  flex-direction: column;
 }
