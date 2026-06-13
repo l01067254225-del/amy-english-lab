@@ -103,6 +103,12 @@ export function buildDailySmsText({ studentName, level, dateKey, subjectScores }
   const scores = subjectScores ?? emptySubjectScores();
   const displayDate = dateKey ? formatTestDate(dateKey) : formatTestDate(getTodayDateString());
 
+  const subjectLines = SUBJECT_KEYS.flatMap((subject) => {
+    const score = scores[subject];
+    if (score == null) return [];
+    return [`- ${SUBJECT_SMS_LABELS[subject]}: ${score}점`];
+  });
+
   return [
     "---",
     "[AMY ENGLISH LAB] 오늘 시험 결과 안내",
@@ -112,12 +118,7 @@ export function buildDailySmsText({ studentName, level, dateKey, subjectScores }
     `시험 날짜: ${displayDate}`,
     "",
     "■ 영역별 성적 (100점 만점 기준)",
-    `- ${SUBJECT_SMS_LABELS.vocab}: ${formatSubjectScoreValue(scores.vocab)}`,
-    `- ${SUBJECT_SMS_LABELS.writing}: ${formatSubjectScoreValue(scores.writing)}`,
-    `- ${SUBJECT_SMS_LABELS.grammar}: ${formatSubjectScoreValue(scores.grammar)}`,
-    `- ${SUBJECT_SMS_LABELS.reading}: ${formatSubjectScoreValue(scores.reading)}`,
-    "",
-    "*오늘 틀린 문항은 오답 노트를 통해 클리닉 완료했습니다. 감사합니다.",
+    ...subjectLines,
     "---",
   ].join("\n");
 }
