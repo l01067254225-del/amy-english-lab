@@ -8,7 +8,7 @@ export const VOCA_EXAM_TYPES = [
   {
     id: "mix",
     label: "혼합(Mix) 모드",
-    description: "뜻 쓰기 + 철자 쓰기를 섞어서 무작위 출제",
+    description: "앞 절반 뜻 쓰기 + 뒤 절반 철자 쓰기 (순서대로 출제)",
   },
 ];
 
@@ -54,7 +54,7 @@ function buildMixVocaQuestions(selectedWords) {
     buildSingleVocaQuestion(entry, "spelling")
   );
 
-  return shuffleArray([...meaningQuestions, ...spellingQuestions]);
+  return [...meaningQuestions, ...spellingQuestions];
 }
 
 export function buildVocaExamQuestions(words, { examType = "meaning", drawCount } = {}) {

@@ -3,6 +3,7 @@ import QuestionCard from "../../components/QuestionCard";
 import RetestWrongAnswerReview from "../../components/RetestWrongAnswerReview";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
+import StudentVocaTest from "./StudentVocaTest";
 import { fetchAllResults, replaceResult, saveResult } from "../../services/resultsApi";
 import { mergeExamRetestResult } from "../../utils/examRetestStorage";
 import { attachStudentAnswerFields } from "../../utils/resultAnswerStorage";
@@ -28,6 +29,11 @@ import { ensureArray } from "../../utils/safeData";
 import { resolveExamSubject } from "../../utils/examSetBuilder";
 import { sortReadingQuestions } from "../../utils/readingQuestionOrder";
 import { shuffleArray } from "../../utils/shuffle";
+import {
+  appendTestAttemptToResult,
+  ATTEMPT_TYPES,
+  syncWrongAnswerHistoryOnResult,
+} from "../../utils/wrongAnswerHistory";
 
 const REFRESH_WARNING =
   "지금 새로고침하면 시험 내용이 초기화될 수 있습니다. 정말 하시겠습니까?";
@@ -50,15 +56,17 @@ export default function StudentExamTake({
 
   const examSubject = resolveExamSubject(exam);
 
+  const isVocabExam = examSubject === "vocab" || Boolean(exam?.vocaSource);
+
   const orderedQuestions = useMemo(() => {
     const questions = ensureArray(exam?.questions);
     if (!questions.length) return [];
     if (examSubject === "reading") {
       return sortReadingQuestions(questions);
     }
-    if (isRetest) return shuffleArray(questions);
+    if (isRetest && !isVocabExam) return shuffleArray(questions);
     return questions;
-  }, [exam, examId, isRetest, examSubject]);
+  }, [exam, examId, isRetest, examSubject, isVocabExam]);
 
   const examView = useMemo(() => {
     if (!orderedQuestions.length) return null;
@@ -68,6 +76,7 @@ export default function StudentExamTake({
   const flatQuestions = examView?.questions ?? [];
   const total = flatQuestions.length;
   const isReadingMode = examView?.mode === "reading";
+  const isVocabMode = examView?.mode === "vocab";
 
   const [answers, setAnswers] = useState(() => {
     const draft = loadExamDraft(studentKey, examId);
@@ -322,6 +331,16 @@ export default function StudentExamTake({
           {isReadingMode ? (
             <StudentReadingTest
               passage={examView.passage}
+              questions={flatQuestions}
+              answers={answers}
+              submitted={submitted}
+              saving={saving}
+              onAnswer={setAnswer}
+              onSubmit={submit}
+              onReset={reset}
+            />
+          ) : isVocabMode ? (
+            <StudentVocaTest
               questions={flatQuestions}
               answers={answers}
               submitted={submitted}

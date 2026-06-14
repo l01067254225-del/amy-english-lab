@@ -17,6 +17,15 @@ export function buildExamTakeView(questions) {
     };
   }
 
+  const allVocab =
+    questions.length > 0 &&
+    questions.every((q) => q.subject === "vocab") &&
+    questions.every((q) => q.type === "meaning" || q.type === "spelling");
+
+  if (allVocab) {
+    return { mode: "vocab", questions, passage: "" };
+  }
+
   return { mode: "default", questions, passage: "" };
 }
 
