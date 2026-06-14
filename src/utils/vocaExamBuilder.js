@@ -103,6 +103,13 @@ export function getMixExamBreakdown(drawCount) {
   };
 }
 
+function toNumberedItems(questions, startNumber) {
+  return ensureArray(questions).map((question, index) => ({
+    question,
+    number: startNumber + index,
+  }));
+}
+
 /** Mix: 앞 절반 뜻 · 뒤 절반 철자 (배열 순서 기준). 단일 유형은 한 섹션만 */
 export function splitVocaExamSections(questions) {
   const list = ensureArray(questions);
@@ -113,9 +120,14 @@ export function splitVocaExamSections(questions) {
 
   if (isMixExam) {
     const halfIndex = Math.ceil(totalCount / 2);
+    const meaningSection = list.slice(0, halfIndex);
+    const spellingSection = list.slice(halfIndex);
+
     return {
-      meaningSection: list.slice(0, halfIndex),
-      spellingSection: list.slice(halfIndex),
+      meaning: toNumberedItems(meaningSection, 1),
+      spelling: toNumberedItems(spellingSection, halfIndex + 1),
+      meaningRange: `1-${halfIndex}`,
+      spellingRange: `${halfIndex + 1}-${totalCount}`,
       halfIndex,
       totalCount,
       isMixExam: true,
@@ -124,8 +136,10 @@ export function splitVocaExamSections(questions) {
 
   if (hasSpelling && !hasMeaning) {
     return {
-      meaningSection: [],
-      spellingSection: list,
+      meaning: [],
+      spelling: toNumberedItems(list, 1),
+      meaningRange: "",
+      spellingRange: totalCount > 0 ? `1-${totalCount}` : "",
       halfIndex: 0,
       totalCount,
       isMixExam: false,
@@ -133,8 +147,10 @@ export function splitVocaExamSections(questions) {
   }
 
   return {
-    meaningSection: list,
-    spellingSection: [],
+    meaning: toNumberedItems(list, 1),
+    spelling: [],
+    meaningRange: totalCount > 0 ? `1-${totalCount}` : "",
+    spellingRange: "",
     halfIndex: totalCount,
     totalCount,
     isMixExam: false,

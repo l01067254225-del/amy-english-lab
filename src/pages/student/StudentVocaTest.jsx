@@ -2,179 +2,138 @@ import { useMemo } from "react";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
 import { splitVocaExamSections } from "../../utils/vocaExamBuilder";
 
-function VocaQuestionRow({
-  question,
-  number,
-  userAnswer,
-  submitted,
-  onAnswer,
-  sectionKind,
-}) {
-  const earned = submitted ? gradeQuestion(question, userAnswer) : null;
-  const placeholder =
-    sectionKind === "spelling" ? "영어 철자 입력" : "한글 뜻 입력";
+function VocaQuestionBlock({ item, userAnswers, submitted, onAnswer, placeholder }) {
+  const { question, number } = item;
+  const userAnswer = userAnswers[question.id] ?? "";
+  const isCorrect = submitted ? gradeQuestion(question, userAnswer) === 1 : null;
+  const promptText = question.prompt || question.text || "";
 
   return (
     <div style={rowStyle}>
-      <div style={promptRowStyle}>
-        <div style={promptStyle}>
-          Q{number}. {question.prompt}
-        </div>
-        {submitted && (
-          <span
-            style={{
-              ...resultBadgeStyle,
-              color: earned === 1 ? "#047857" : "#b91c1c",
-            }}
-          >
-            {earned === 1 ? "정답(1)" : "오답(0)"}
-          </span>
-        )}
+      <div style={promptStyle}>
+        Q{number}. <span style={promptTextStyle}>{promptText}</span>
       </div>
       <input
         type="text"
-        placeholder={placeholder}
         value={userAnswer}
         disabled={submitted}
         onChange={(event) => onAnswer(question.id, event.target.value)}
+        placeholder={placeholder}
         style={{
           ...inputStyle,
-          background:
-            submitted && earned === 1
-              ? "#ecfdf5"
-              : submitted
-                ? "#fef2f2"
-                : "#f8fafc",
-          borderColor:
-            submitted && earned === 1
-              ? "#6ee7b7"
-              : submitted
-                ? "#fecaca"
-                : "#e2e8f0",
+          background: submitted ? "#f1f5f9" : "#f8fafc",
         }}
       />
-      {submitted && earned === 0 && (
-        <p style={feedbackStyle}>{getAnswerFeedback(question)}</p>
+      {submitted && (
+        <div
+          style={{
+            ...feedbackStyle,
+            color: isCorrect ? "#059669" : "#ef4444",
+          }}
+        >
+          {getAnswerFeedback(question)}
+        </div>
       )}
     </div>
   );
 }
 
-function VocaSection({
-  title,
-  rangeLabel,
-  questions,
-  startNumber,
-  answers,
-  submitted,
-  onAnswer,
-  sectionKind,
-  withTopDivider = false,
-}) {
-  if (!questions.length) return null;
-
-  return (
-    <section
-      style={{
-        ...sectionStyle,
-        ...(withTopDivider ? sectionDividerStyle : null),
-      }}
-    >
-      <h2 style={sectionTitleStyle}>
-        {title} <span style={sectionRangeStyle}>{rangeLabel}</span>
-      </h2>
-      <div style={sectionListStyle}>
-        {questions.map((question, index) => (
-          <VocaQuestionRow
-            key={question.id}
-            question={question}
-            number={startNumber + index}
-            userAnswer={answers[question.id] ?? ""}
-            submitted={submitted}
-            onAnswer={onAnswer}
-            sectionKind={sectionKind}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export default function StudentVocaTest({
-  questions,
-  answers,
-  submitted,
-  saving,
+  questions = [],
+  userAnswers = {},
+  submitted = false,
   onAnswer,
-  onSubmit,
-  onReset,
 }) {
-  const { meaningSection, spellingSection, halfIndex, totalCount, isMixExam } = useMemo(
-    () => splitVocaExamSections(questions),
-    [questions]
-  );
-
-  const meaningRange = isMixExam
-    ? `[1-${halfIndex}]`
-    : meaningSection.length > 0
-      ? `[1-${totalCount}]`
-      : "";
-  const spellingRange = isMixExam
-    ? `[${halfIndex + 1}-${totalCount}]`
-    : spellingSection.length > 0
-      ? `[1-${totalCount}]`
-      : "";
+  const sections = useMemo(() => splitVocaExamSections(questions), [questions]);
+  const totalCount = questions.length;
 
   return (
-    <>
-      <VocaSection
-        title="다음 단어의 뜻을 쓰시오."
-        rangeLabel={meaningRange}
-        questions={meaningSection}
-        startNumber={1}
-        answers={answers}
-        submitted={submitted}
-        onAnswer={onAnswer}
-        sectionKind="meaning"
-      />
+    <div style={cardStyle}>
+      <div style={scoreHeaderStyle}>문항당 1점 · 총 {totalCount}점</div>
 
-      <VocaSection
-        title="다음 뜻에 해당하는 영어 철자를 쓰시오."
-        rangeLabel={spellingRange}
-        questions={spellingSection}
-        startNumber={halfIndex + 1}
-        answers={answers}
-        submitted={submitted}
-        onAnswer={onAnswer}
-        sectionKind="spelling"
-        withTopDivider={meaningSection.length > 0}
-      />
+      {sections.meaning.length > 0 && (
+        <section style={meaningSectionStyle}>
+          <h2 style={sectionTitleStyle}>
+            <span>다음 단어의 뜻을 쓰시오.</span>
+            <span style={sectionRangeStyle}>
+              [{sections.meaningRange || `1-${sections.meaning.length}`}]
+            </span>
+          </h2>
 
-      <div style={actionRowStyle}>
-        {!submitted ? (
-          <button type="button" onClick={onSubmit} disabled={saving} style={submitBtnStyle}>
-            {saving ? "저장 중..." : "제출"}
-          </button>
-        ) : (
-          <button type="button" onClick={onReset} style={secondaryBtnStyle}>
-            다시 풀기
-          </button>
-        )}
-      </div>
-    </>
+          <div style={questionListStyle}>
+            {sections.meaning.map((item) => (
+              <VocaQuestionBlock
+                key={item.question.id}
+                item={item}
+                userAnswers={userAnswers}
+                submitted={submitted}
+                onAnswer={onAnswer}
+                placeholder="한글 뜻 입력"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sections.spelling.length > 0 && (
+        <section style={spellingSectionStyle}>
+          <h2 style={sectionTitleStyle}>
+            <span>다음 뜻에 해당하는 영어 철자를 쓰시오.</span>
+            <span style={sectionRangeStyle}>
+              [{sections.spellingRange || `${totalCount - sections.spelling.length + 1}-${totalCount}`}]
+            </span>
+          </h2>
+
+          <div style={questionListStyle}>
+            {sections.spelling.map((item) => (
+              <VocaQuestionBlock
+                key={item.question.id}
+                item={item}
+                userAnswers={userAnswers}
+                submitted={submitted}
+                onAnswer={onAnswer}
+                placeholder="영어 철자 입력"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
 
-const sectionStyle = {
+const cardStyle = {
+  background: "white",
+  padding: 32,
+  borderRadius: 16,
+  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)",
+  border: "1px solid #f1f5f9",
+};
+
+const scoreHeaderStyle = {
+  marginBottom: 32,
+  paddingBottom: 16,
+  borderBottom: "1px solid #f1f5f9",
+  color: "#475569",
+  fontWeight: 600,
+  fontSize: 16,
+};
+
+const meaningSectionStyle = {
   marginBottom: 48,
 };
 
-const sectionDividerStyle = {
-  paddingTop: 24,
-  borderTop: "2px dashed #e2e8f0",
+const spellingSectionStyle = {
+  marginTop: 48,
+  paddingTop: 32,
+  borderTop: "2px dashed #f1f5f9",
 };
 
 const sectionTitleStyle = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 8,
   margin: "0 0 24px",
   fontSize: 18,
   fontWeight: 800,
@@ -185,9 +144,10 @@ const sectionTitleStyle = {
 const sectionRangeStyle = {
   color: "#94a3b8",
   fontWeight: 500,
+  fontSize: 14,
 };
 
-const sectionListStyle = {
+const questionListStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 24,
@@ -195,28 +155,21 @@ const sectionListStyle = {
 
 const rowStyle = {
   paddingBottom: 24,
-  borderBottom: "1px solid #f1f5f9",
-};
-
-const promptRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 12,
-  marginBottom: 12,
+  borderBottom: "1px solid #f8fafc",
 };
 
 const promptStyle = {
   fontWeight: 800,
   color: "#0f172a",
   fontSize: 16,
-  lineHeight: 1.6,
+  marginBottom: 12,
+  lineHeight: 1.5,
 };
 
-const resultBadgeStyle = {
-  fontWeight: 800,
-  fontSize: 14,
-  whiteSpace: "nowrap",
+const promptTextStyle = {
+  marginLeft: 4,
+  fontSize: 20,
+  fontWeight: 700,
 };
 
 const inputStyle = {
@@ -230,30 +183,7 @@ const inputStyle = {
 };
 
 const feedbackStyle = {
-  margin: "10px 0 0",
-  color: "#b91c1c",
-  fontSize: 14,
-};
-
-const actionRowStyle = {
-  display: "flex",
-  gap: 10,
   marginTop: 8,
-};
-
-const submitBtnStyle = {
-  padding: "12px 20px",
-  borderRadius: 10,
-  border: "none",
-  background: "#2563eb",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const secondaryBtnStyle = {
-  ...submitBtnStyle,
-  background: "white",
-  color: "#334155",
-  border: "1px solid #ddd",
+  fontSize: 14,
+  fontWeight: 600,
 };

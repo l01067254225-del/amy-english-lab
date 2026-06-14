@@ -315,27 +315,16 @@ export default function StudentExamTake({
           </p>
         )}
 
-        <div
-          style={{
-            background: isReadingMode ? "transparent" : "white",
-            borderRadius: 16,
-            padding: isReadingMode ? 0 : isVocabMode ? 32 : 24,
-            boxShadow: isReadingMode ? "none" : "0 4px 20px rgba(15, 23, 42, 0.06)",
-            border: isReadingMode ? "none" : "1px solid #e2e8f0",
-          }}
-        >
-          <p
+        {isReadingMode ? (
+          <div
             style={{
-              margin: isVocabMode ? "0 0 32px" : "0 0 16px",
-              paddingBottom: isVocabMode ? 16 : 0,
-              borderBottom: isVocabMode ? "1px solid #e2e8f0" : "none",
-              color: "#64748b",
+              background: "transparent",
+              borderRadius: 16,
+              padding: 0,
+              boxShadow: "none",
+              border: "none",
             }}
           >
-            문항당 1점 · 총 {total}점
-          </p>
-
-          {isReadingMode ? (
             <StudentReadingTest
               passage={examView.passage}
               questions={flatQuestions}
@@ -346,18 +335,45 @@ export default function StudentExamTake({
               onSubmit={submit}
               onReset={reset}
             />
-          ) : isVocabMode ? (
+          </div>
+        ) : isVocabMode ? (
+          <>
             <StudentVocaTest
               questions={flatQuestions}
-              answers={answers}
+              userAnswers={answers}
               submitted={submitted}
-              saving={saving}
               onAnswer={setAnswer}
-              onSubmit={submit}
-              onReset={reset}
             />
-          ) : (
-            <>
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              {!submitted ? (
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={saving}
+                  style={submitBtnStyle}
+                >
+                  {saving ? "저장 중..." : isRetest ? "재시험 제출" : "제출"}
+                </button>
+              ) : (
+                <button type="button" onClick={reset} style={secondaryBtnStyle}>
+                  다시 풀기
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div
+            style={{
+              background: "white",
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: "0 4px 20px rgba(15, 23, 42, 0.06)",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <p style={{ margin: "0 0 16px", color: "#64748b" }}>
+              문항당 1점 · 총 {total}점
+            </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {flatQuestions.map((q, idx) => (
                   <QuestionCard
@@ -388,9 +404,8 @@ export default function StudentExamTake({
                   </button>
                 )}
               </div>
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
