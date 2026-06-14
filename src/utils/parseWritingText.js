@@ -1,18 +1,61 @@
 import { shuffleArray } from "./shuffle";
 
-const HANGUL = /[\uAC00-\uD7A3]/u;
+const HANGUL_ANY =
+  /[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uD7B0-\uD7FF]/u;
 
-/** 붙여넣기 텍스트 → 빈 줄(\n+) 무시하고 비어 있지 않은 줄만 추출 */
-export function extractWritingPasteLines(text) {
+/** 붙여넣기 원문 정규화 — BOM, NBSP, 다양한 줄바꿈 통일 */
+export function normalizeWritingPasteText(text) {
   return String(text ?? "")
+    .replace(/\uFEFF/g, "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .replace(/[\u2028\u2029\v\f]/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .trim();
 }
 
-/** 비어 있지 않은 줄을 3줄씩 [한글, 기준문장, 모범답안] 세트로 묶음 */
+/** 줄 단위 공백·번호 접두사 제거 */
+export function cleanWritingPasteLine(line) {
+  return String(line ?? "")
+    .replace(/\uFEFF/g, "")
+    .replace(/\u200B/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u2000-\u200A]/g, " ")
+    .replace(/^\d+[.)]\s*/, "")
+    .replace(/^Q\d+\.\s*/i, "")
+    .replace(/^[-*•·▪▫●○◦]\s*/, "")
+    .trim();
+}
+
+function isSeparatorOnlyLine(line) {
+  const cleaned = cleanWritingPasteLine(line);
+  if (!cleaned) return true;
+  return (
+    /^[-–—_=~]{2,}$/u.test(cleaned) ||
+    /^[.·…\s]+$/u.test(cleaned) ||
+    /^\(\s*빈\s*줄\s*\)$/iu.test(cleaned)
+  );
+}
+
+function hasKoreanText(text) {
+  return HANGUL_ANY.test(String(text ?? ""));
+}
+
+/** 붙여넣기 → 유효 줄 배열 (빈 줄·구분선 제외) */
+export function extractWritingPasteLines(text) {
+  const normalized = normalizeWritingPasteText(text);
+  if (!normalized) return [];
+
+  const lines = [];
+  for (const rawLine of normalized.split("\n")) {
+    const cleaned = cleanWritingPasteLine(rawLine);
+    if (isSeparatorOnlyLine(cleaned)) continue;
+    lines.push(cleaned);
+  }
+  return lines;
+}
+
+/** 3줄씩 [한글, 기준문장, 모범답안] 세트 */
 export function groupWritingLinesIntoTriplets(lines) {
   const safeLines = Array.isArray(lines) ? lines : [];
   const triplets = [];
@@ -24,7 +67,6 @@ export function groupWritingLinesIntoTriplets(lines) {
   return triplets;
 }
 
-/** 기준 문장을 단어 단위로 분리 (앞뒤 구두점 정리) */
 export function tokenizeSentenceIntoWords(sentence) {
   return String(sentence ?? "")
     .trim()
@@ -33,16 +75,16 @@ export function tokenizeSentenceIntoWords(sentence) {
     .filter(Boolean);
 }
 
-/** 기준 문장 단어를 무작위로 섞어 scrambledWords 배열 반환 */
 export function shuffleSentenceWords(sentence) {
   const words = tokenizeSentenceIntoWords(sentence);
-  if (words.length <= 1) return [...words];
+  if (words.length === 0) return [];
+  if (words.length === 1) return [...words];
 
   const originalKey = words.join("\u0001");
   let shuffled = shuffleArray(words);
   let attempt = 0;
 
-  while (shuffled.join("\u0001") === originalKey && attempt < 8) {
+  while (shuffled.join("\u0001") === originalKey && attempt < 12) {
     shuffled = shuffleArray(words);
     attempt += 1;
   }
@@ -50,33 +92,34 @@ export function shuffleSentenceWords(sentence) {
   return shuffled;
 }
 
+/** 쉼표 나열형 주어진 단어 (I, go, school) — 영어 문장과 구분 */
 function isLegacyCommaWordList(line) {
-  const trimmed = String(line ?? "").trim();
+  const trimmed = cleanWritingPasteLine(line);
   if (!trimmed.includes(",")) return false;
 
   const commaParts = trimmed
     .split(",")
-    .map((part) => part.trim())
+    .map((part) => cleanWritingPasteLine(part))
     .filter(Boolean);
 
   if (commaParts.length < 2) return false;
 
-  const spaceWordCount = tokenizeSentenceIntoWords(trimmed).length;
-  return spaceWordCount <= commaParts.length;
+  if (commaParts.some((part) => /\s/.test(part))) return false;
+
+  return commaParts.every((part) => /^[A-Za-z0-9'’\-]+$/u.test(part));
 }
 
-/** 3줄 → Writing 문항 객체 (prompt / givenWords·scrambledWords / answer) */
 export function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
-  const koreanPrompt = String(prompt ?? "").trim();
-  const referenceText = String(referenceLine ?? "").trim();
-  const modelAnswer = String(answer ?? "").trim();
+  const koreanPrompt = cleanWritingPasteLine(prompt);
+  const referenceText = cleanWritingPasteLine(referenceLine);
+  const modelAnswer = cleanWritingPasteLine(answer);
 
   if (!koreanPrompt || !referenceText || !modelAnswer) return null;
 
   if (isLegacyCommaWordList(referenceText)) {
     const legacyWords = referenceText
       .split(",")
-      .map((part) => part.trim())
+      .map((part) => cleanWritingPasteLine(part))
       .filter(Boolean);
 
     return {
@@ -91,6 +134,7 @@ export function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
   }
 
   const scrambledWords = shuffleSentenceWords(referenceText);
+  if (scrambledWords.length === 0) return null;
 
   return {
     subject: "writing",
@@ -104,29 +148,35 @@ export function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
 }
 
 export function parseWritingBlock(block) {
-  const lines = String(block ?? "")
-    .replace(/\r/g, "")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
+  const lines = extractWritingPasteLines(block);
   if (lines.length < 3) return null;
-
   return buildWritingQuestionFromLines(lines[0], lines[1], lines[2]);
 }
 
 /**
  * Writing 붙여넣기 일괄 파싱
- * - 빈 줄 유무와 관계없이 비어 있지 않은 줄을 3줄씩 한 문항으로 묶음
+ * - \r\n / \n / 빈 줄 / 미세 공백 모두 허용
+ * - 비어 있지 않은 줄을 3줄씩 한 문항으로 묶음
  */
 export function parseWritingEntries(text) {
   const lines = extractWritingPasteLines(text);
-  if (lines.length === 0) return { entries: [], errors: [] };
+  if (lines.length === 0) {
+    return { entries: [], errors: ["입력된 텍스트에서 유효한 줄을 찾지 못했습니다."] };
+  }
 
   const entries = [];
   const errors = [];
   const triplets = groupWritingLinesIntoTriplets(lines);
   const remainder = lines.length % 3;
+
+  if (triplets.length === 0) {
+    return {
+      entries: [],
+      errors: [
+        `유효 ${lines.length}줄 — 최소 3줄(한글 뜻 / 기준 문장 / 모범 답안)이 필요합니다.`,
+      ],
+    };
+  }
 
   if (remainder !== 0) {
     errors.push(
@@ -139,13 +189,15 @@ export function parseWritingEntries(text) {
 
     if (!parsed) {
       errors.push(
-        `${index + 1}번째 영작: 한글 뜻 · 기준 문장 · 모범 답안 3줄 형식을 인식하지 못했습니다.`
+        `${index + 1}번째 영작: 3줄 중 빈 줄이 있거나 기준 문장에서 단어를 추출하지 못했습니다.`
       );
       return;
     }
 
-    if (!HANGUL.test(parsed.prompt)) {
-      errors.push(`${index + 1}번째 영작: 첫 줄은 한글 뜻(문제)이어야 합니다.`);
+    if (!hasKoreanText(parsed.prompt)) {
+      errors.push(
+        `${index + 1}번째 영작: 첫 줄(한글 뜻)에 한글이 없습니다 — "${parsed.prompt.slice(0, 30)}"`
+      );
       return;
     }
 
@@ -170,7 +222,7 @@ Let's skip the first page.`;
 }
 
 export function getWritingPasteHint() {
-  return "Writing: [한글 뜻 / 기준 문장 / 모범 답안] 순으로 3줄씩 입력하세요. 문항 사이 빈 줄은 넣어도 되고 생략해도 됩니다. 기준 문장 단어가 섞여 '주어진 단어'로 저장됩니다.";
+  return "Writing: [한글 뜻 / 기준 문장 / 모범 답안] 순으로 3줄씩 입력하세요. 문항 사이 빈 줄은 넣어도 되고 생략해도 됩니다. 줄 앞뒤 공백·Windows 줄바꿈(\\r\\n)도 자동 처리됩니다.";
 }
 
 export function formatScrambledWordsForDisplay(scrambledWords) {

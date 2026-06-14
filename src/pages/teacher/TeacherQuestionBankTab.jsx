@@ -285,44 +285,72 @@ export default function TeacherQuestionBankTab() {
     processCsvFile(e.target.files?.[0]);
   };
 
-  const handleWritingBulkRegister = () => {
-    const { entries, errors } = parseWritingEntries(pasteText);
+  const handleWritingBulkRegister = (sourceText = pasteText) => {
+    const normalizedText = String(sourceText ?? "").trim();
+    if (!normalizedText) {
+      alert("붙여넣을 Writing 텍스트를 입력해 주세요.");
+      return false;
+    }
+
+    let entries = [];
+    let errors = [];
+
+    try {
+      ({ entries, errors } = parseWritingEntries(normalizedText));
+    } catch (error) {
+      console.error("Writing parse failed:", error);
+      alert(
+        `텍스트 분석 중 오류가 발생했습니다.\n${error?.message ?? "알 수 없는 오류"}`
+      );
+      return false;
+    }
 
     if (entries.length === 0) {
-      const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+      const detail = errors.length ? `\n\n${errors.slice(0, 8).join("\n")}` : "";
       alert(`등록할 Writing 문항을 찾지 못했습니다.${detail}`);
       return false;
     }
 
     const resolvedSetName =
-      materialSetName.trim() || suggestSetName("writing", questionLevel);
+      materialSetName.trim() ||
+      suggestSetName("writing", questionLevel || "공통");
     const setId = createSetId();
+    const resolvedLevel = String(questionLevel ?? "").trim();
 
-    const next = addQuestionsBulk(
-      entries.map((item) => ({
-        ...item,
-        level: questionLevel,
-        subject: "writing",
-        type: "writing",
-      })),
-      {
-        setId,
-        setName: resolvedSetName,
-      }
-    );
-    setQuestions(next);
-    setPasteText("");
-    setMaterialSetName("");
+    try {
+      const next = addQuestionsBulk(
+        entries.map((item) => ({
+          ...item,
+          level: resolvedLevel,
+          subject: "writing",
+          type: "writing",
+        })),
+        {
+          setId,
+          setName: resolvedSetName,
+        }
+      );
+      setQuestions(next);
+      setPasteText("");
+      setMaterialSetName("");
 
-    const errorNote =
-      errors.length > 0
-        ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
-        : "";
+      const levelNote = resolvedLevel ? "" : "\n(레벨 미선택 — 빈 값으로 저장됨)";
+      const errorNote =
+        errors.length > 0
+          ? `\n\n참고 ${errors.length}건:\n${errors.slice(0, 5).join("\n")}`
+          : "";
 
-    alert(
-      `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
-    );
-    return true;
+      alert(
+        `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${levelNote}${errorNote}`
+      );
+      return true;
+    } catch (error) {
+      console.error("Writing bulk register failed:", error);
+      alert(
+        `문제은행 저장 중 오류가 발생했습니다.\n${error?.message ?? "알 수 없는 오류"}`
+      );
+      return false;
+    }
   };
 
   const handlePasteAnalyze = () => {
@@ -331,7 +359,8 @@ export default function TeacherQuestionBankTab() {
       return;
     }
 
-    if (!questionLevel) {
+    const isWritingPaste = subject === "writing";
+    if (!questionLevel && !isWritingPaste) {
       alert("문제 추가 폼에서 레벨을 먼저 선택해 주세요.");
       return;
     }
@@ -339,7 +368,6 @@ export default function TeacherQuestionBankTab() {
     setPasteAnalyzing(true);
     try {
       const isVocabPaste = subject === "vocab";
-      const isWritingPaste = subject === "writing";
 
       if (isVocabPaste) {
         const { entries, errors } = parseVocabEntries(pasteText);
@@ -377,7 +405,7 @@ export default function TeacherQuestionBankTab() {
       }
 
       if (isWritingPaste) {
-        handleWritingBulkRegister();
+        handleWritingBulkRegister(pasteText);
         return;
       }
 
