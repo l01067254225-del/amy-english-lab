@@ -110,6 +110,76 @@ function toNumberedItems(questions, startNumber) {
   }));
 }
 
+const HANGUL_CHAR = /[\uAC00-\uD7A3]/u;
+const LATIN_CHAR = /[A-Za-z]/u;
+
+function extractKoreanOnly(text) {
+  const source = String(text ?? "").trim();
+  if (!source) return "";
+
+  const hangulIndex = source.search(HANGUL_CHAR);
+  if (hangulIndex === -1) return source;
+
+  return source.slice(hangulIndex).trim();
+}
+
+function extractEnglishOnly(text) {
+  const source = String(text ?? "").trim();
+  if (!source) return "";
+
+  const hangulIndex = source.search(HANGUL_CHAR);
+  if (hangulIndex === -1) return source;
+
+  return source.slice(0, hangulIndex).trim();
+}
+
+function readMeaningField(question) {
+  return String(
+    question?.meaning ?? question?.mean ?? question?.korean ?? question?.definition ?? ""
+  ).trim();
+}
+
+function readWordField(question) {
+  return String(
+    question?.word ?? question?.english ?? question?.spelling ?? question?.voca ?? ""
+  ).trim();
+}
+
+/** 뜻 쓰기 — 문제 제목: 영어만 */
+export function resolveVocaMeaningPrompt(question) {
+  const word = readWordField(question);
+  if (word && !HANGUL_CHAR.test(word)) {
+    return word;
+  }
+
+  const raw = String(question?.prompt ?? question?.text ?? "").trim();
+  const englishOnly = extractEnglishOnly(raw);
+  if (englishOnly && LATIN_CHAR.test(englishOnly)) {
+    return englishOnly;
+  }
+
+  return raw;
+}
+
+/** 철자 쓰기 — 문제 제목: 한글 뜻만 (영어 철자·숙어 노출 금지) */
+export function resolveVocaSpellingPrompt(question) {
+  const meaning = readMeaningField(question);
+  if (meaning) {
+    const koreanOnly = extractKoreanOnly(meaning);
+    if (koreanOnly && HANGUL_CHAR.test(koreanOnly)) {
+      return koreanOnly;
+    }
+  }
+
+  const raw = String(question?.prompt ?? question?.text ?? "").trim();
+  const koreanOnly = extractKoreanOnly(raw);
+  if (koreanOnly && HANGUL_CHAR.test(koreanOnly)) {
+    return koreanOnly;
+  }
+
+  return raw;
+}
+
 function isVocaSpellingQuestion(question) {
   return question?.type === "spelling";
 }

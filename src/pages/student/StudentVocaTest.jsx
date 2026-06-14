@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
-import { splitVocaExamSections } from "../../utils/vocaExamBuilder";
+import { splitVocaExamSections, resolveVocaMeaningPrompt, resolveVocaSpellingPrompt } from "../../utils/vocaExamBuilder";
 
 const EMPTY_SECTIONS = {
   meaning: [],
@@ -12,14 +12,17 @@ const EMPTY_SECTIONS = {
   isMixExam: false,
 };
 
-function VocaQuestionRow({ item, userAnswers, submitted, onAnswer, placeholder }) {
+function VocaQuestionRow({ item, userAnswers, submitted, onAnswer, placeholder, sectionKind }) {
   const question = item?.question;
   if (!question?.id) return null;
 
   const number = item.number ?? 0;
   const answer = userAnswers[question.id] ?? "";
   const isCorrect = submitted ? gradeQuestion(question, answer) === 1 : false;
-  const promptText = String(question.prompt ?? question.text ?? "").trim();
+  const promptText =
+    sectionKind === "spelling"
+      ? resolveVocaSpellingPrompt(question)
+      : resolveVocaMeaningPrompt(question);
 
   return (
     <div style={styles.row}>
@@ -60,6 +63,7 @@ function VocaSectionBlock({
   onAnswer,
   placeholder,
   showDivider,
+  sectionKind,
 }) {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
@@ -82,6 +86,7 @@ function VocaSectionBlock({
             submitted={submitted}
             onAnswer={onAnswer}
             placeholder={placeholder}
+            sectionKind={sectionKind}
           />
         ))}
       </div>
@@ -125,6 +130,7 @@ export default function StudentVocaTest({
         onAnswer={onAnswer}
         placeholder="한글 뜻 입력"
         showDivider={false}
+        sectionKind="meaning"
       />
 
       <VocaSectionBlock
@@ -136,6 +142,7 @@ export default function StudentVocaTest({
         onAnswer={onAnswer}
         placeholder="영어 철자 입력"
         showDivider={sections.meaning.length > 0}
+        sectionKind="spelling"
       />
     </div>
   );
