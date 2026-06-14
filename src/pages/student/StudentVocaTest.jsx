@@ -1,10 +1,18 @@
 import { useMemo } from "react";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
+import { splitVocaExamSections } from "../../utils/vocaExamBuilder";
 
-function VocaQuestionRow({ question, number, userAnswer, submitted, onAnswer }) {
+function VocaQuestionRow({
+  question,
+  number,
+  userAnswer,
+  submitted,
+  onAnswer,
+  sectionKind,
+}) {
   const earned = submitted ? gradeQuestion(question, userAnswer) : null;
   const placeholder =
-    question.type === "spelling" ? "영어 철자 입력" : "한글 뜻 입력";
+    sectionKind === "spelling" ? "영어 철자 입력" : "한글 뜻 입력";
 
   return (
     <div style={rowStyle}>
@@ -60,6 +68,7 @@ function VocaSection({
   answers,
   submitted,
   onAnswer,
+  sectionKind,
   withTopDivider = false,
 }) {
   if (!questions.length) return null;
@@ -83,6 +92,7 @@ function VocaSection({
             userAnswer={answers[question.id] ?? ""}
             submitted={submitted}
             onAnswer={onAnswer}
+            sectionKind={sectionKind}
           />
         ))}
       </div>
@@ -99,45 +109,44 @@ export default function StudentVocaTest({
   onSubmit,
   onReset,
 }) {
-  const { meaningSection, spellingSection } = useMemo(() => {
-    const meaning = [];
-    const spelling = [];
+  const { meaningSection, spellingSection, halfIndex, totalCount, isMixExam } = useMemo(
+    () => splitVocaExamSections(questions),
+    [questions]
+  );
 
-    questions.forEach((question) => {
-      if (question.type === "spelling") {
-        spelling.push(question);
-      } else {
-        meaning.push(question);
-      }
-    });
-
-    return { meaningSection: meaning, spellingSection: spelling };
-  }, [questions]);
-
-  const meaningStart = 1;
-  const spellingStart = meaningSection.length + 1;
-  const totalCount = questions.length;
+  const meaningRange = isMixExam
+    ? `[1-${halfIndex}]`
+    : meaningSection.length > 0
+      ? `[1-${totalCount}]`
+      : "";
+  const spellingRange = isMixExam
+    ? `[${halfIndex + 1}-${totalCount}]`
+    : spellingSection.length > 0
+      ? `[1-${totalCount}]`
+      : "";
 
   return (
     <>
       <VocaSection
         title="다음 단어의 뜻을 쓰시오."
-        rangeLabel={`[${meaningStart}-${meaningSection.length || totalCount}]`}
+        rangeLabel={meaningRange}
         questions={meaningSection}
-        startNumber={meaningStart}
+        startNumber={1}
         answers={answers}
         submitted={submitted}
         onAnswer={onAnswer}
+        sectionKind="meaning"
       />
 
       <VocaSection
         title="다음 뜻에 해당하는 영어 철자를 쓰시오."
-        rangeLabel={`[${spellingStart}-${totalCount}]`}
+        rangeLabel={spellingRange}
         questions={spellingSection}
-        startNumber={spellingStart}
+        startNumber={halfIndex + 1}
         answers={answers}
         submitted={submitted}
         onAnswer={onAnswer}
+        sectionKind="spelling"
         withTopDivider={meaningSection.length > 0}
       />
 

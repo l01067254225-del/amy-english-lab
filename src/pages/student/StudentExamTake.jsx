@@ -319,12 +319,19 @@ export default function StudentExamTake({
           style={{
             background: isReadingMode ? "transparent" : "white",
             borderRadius: 16,
-            padding: isReadingMode ? 0 : 24,
+            padding: isReadingMode ? 0 : isVocabMode ? 32 : 24,
             boxShadow: isReadingMode ? "none" : "0 4px 20px rgba(15, 23, 42, 0.06)",
             border: isReadingMode ? "none" : "1px solid #e2e8f0",
           }}
         >
-          <p style={{ margin: "0 0 16px", color: "#64748b" }}>
+          <p
+            style={{
+              margin: isVocabMode ? "0 0 32px" : "0 0 16px",
+              paddingBottom: isVocabMode ? 16 : 0,
+              borderBottom: isVocabMode ? "1px solid #e2e8f0" : "none",
+              color: "#64748b",
+            }}
+          >
             문항당 1점 · 총 {total}점
           </p>
 

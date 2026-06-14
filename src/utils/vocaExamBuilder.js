@@ -102,3 +102,41 @@ export function getMixExamBreakdown(drawCount) {
     total: count,
   };
 }
+
+/** Mix: 앞 절반 뜻 · 뒤 절반 철자 (배열 순서 기준). 단일 유형은 한 섹션만 */
+export function splitVocaExamSections(questions) {
+  const list = ensureArray(questions);
+  const totalCount = list.length;
+  const hasMeaning = list.some((q) => q.type === "meaning");
+  const hasSpelling = list.some((q) => q.type === "spelling");
+  const isMixExam = hasMeaning && hasSpelling;
+
+  if (isMixExam) {
+    const halfIndex = Math.ceil(totalCount / 2);
+    return {
+      meaningSection: list.slice(0, halfIndex),
+      spellingSection: list.slice(halfIndex),
+      halfIndex,
+      totalCount,
+      isMixExam: true,
+    };
+  }
+
+  if (hasSpelling && !hasMeaning) {
+    return {
+      meaningSection: [],
+      spellingSection: list,
+      halfIndex: 0,
+      totalCount,
+      isMixExam: false,
+    };
+  }
+
+  return {
+    meaningSection: list,
+    spellingSection: [],
+    halfIndex: totalCount,
+    totalCount,
+    isMixExam: false,
+  };
+}
