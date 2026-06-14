@@ -66,7 +66,6 @@ export default function TeacherQuestionBankTab() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [csvUploading, setCsvUploading] = useState(false);
   const [pasteText, setPasteText] = useState("");
-  const [pasteSubject, setPasteSubject] = useState("grammar");
   const [pasteAnalyzing, setPasteAnalyzing] = useState(false);
   const [materialSetName, setMaterialSetName] = useState("");
   const [vocaSets, setVocaSets] = useState(() => loadVocaSets());
@@ -88,9 +87,9 @@ export default function TeacherQuestionBankTab() {
   );
 
   const pastePassagePreview = useMemo(() => {
-    if (pasteSubject !== "reading" || !pasteText.trim()) return "";
+    if (subject !== "reading" || !pasteText.trim()) return "";
     return formatPassagesPreviewText(pasteText);
-  }, [pasteSubject, pasteText]);
+  }, [subject, pasteText]);
 
   const handleSubjectChange = (nextSubject) => {
     setSubject(nextSubject);
@@ -299,8 +298,8 @@ export default function TeacherQuestionBankTab() {
 
     setPasteAnalyzing(true);
     try {
-      const isVocabPaste = pasteSubject === "vocab";
-      const isWritingPaste = pasteSubject === "writing";
+      const isVocabPaste = subject === "vocab";
+      const isWritingPaste = subject === "writing";
 
       if (isVocabPaste) {
         const { entries, errors } = parseVocabEntries(pasteText);
@@ -373,7 +372,7 @@ export default function TeacherQuestionBankTab() {
       }
 
       const { items, errors } = parseQuestionText(pasteText, {
-        defaultSubject: pasteSubject,
+        defaultSubject: subject,
       });
 
       if (items.length === 0) {
@@ -383,7 +382,7 @@ export default function TeacherQuestionBankTab() {
       }
 
       const resolvedSetName =
-        materialSetName.trim() || suggestSetName(pasteSubject, questionLevel);
+        materialSetName.trim() || suggestSetName(subject, questionLevel);
       const setId = createSetId();
 
       const next = addQuestionsBulk(
@@ -695,8 +694,8 @@ export default function TeacherQuestionBankTab() {
           <label style={{ ...fieldLabelStyle, minWidth: 140, marginBottom: 0 }}>
             기본 과목
             <select
-              value={pasteSubject}
-              onChange={(e) => setPasteSubject(e.target.value)}
+              value={subject}
+              onChange={(e) => handleSubjectChange(e.target.value)}
               style={{ ...selectStyle, marginTop: 0 }}
             >
               {SUBJECT_OPTIONS.map((opt) => (
@@ -714,7 +713,7 @@ export default function TeacherQuestionBankTab() {
             type="text"
             value={materialSetName}
             onChange={(e) => setMaterialSetName(e.target.value)}
-            placeholder={getSetNamePlaceholder(pasteSubject, questionLevel)}
+            placeholder={getSetNamePlaceholder(subject, questionLevel)}
             style={selectStyle}
           />
         </label>
@@ -723,26 +722,26 @@ export default function TeacherQuestionBankTab() {
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
           placeholder={
-            pasteSubject === "vocab"
+            subject === "vocab"
               ? getVocabPasteExample()
-              : pasteSubject === "writing"
+              : subject === "writing"
                 ? getWritingPasteExample()
-                : getTextPasteExample(pasteSubject)
+                : getTextPasteExample(subject)
           }
           style={pasteTextareaStyle}
         />
 
-        {pasteSubject === "reading" && (
+        {subject === "reading" && (
           <ReadingPassagePreview passage={pastePassagePreview} />
         )}
 
         <div style={pasteFooterStyle}>
           <p style={pasteHintStyle}>
-            {pasteSubject === "vocab"
+            {subject === "vocab"
               ? getVocabPasteHint()
-              : pasteSubject === "writing"
+              : subject === "writing"
                 ? getWritingPasteHint()
-                : getTextPasteHint(pasteSubject)}
+                : getTextPasteHint(subject)}
           </p>
           <button
             type="button"
