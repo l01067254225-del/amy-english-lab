@@ -43,8 +43,9 @@ import {
   getWritingPasteExample,
   getWritingPasteHint,
   parseWritingEntries,
+  ensureWordArray,
 } from "../../utils/parseWritingText";
-import { getWritingScrambledHint } from "../../utils/writingQuestion";
+import { getWritingScrambledHint, normalizeWritingFieldsList } from "../../utils/writingQuestion";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 
@@ -305,8 +306,23 @@ export default function TeacherQuestionBankTab() {
       return false;
     }
 
-    if (entries.length === 0) {
-      const detail = errors.length ? `\n\n${errors.slice(0, 8).join("\n")}` : "";
+    const validEntries = (entries ?? []).filter(
+      (item) =>
+        item &&
+        String(item.answer ?? "").trim() &&
+        (ensureWordArray(item.scrambledWords).length > 0 ||
+          String(item.givenWords ?? "").trim())
+    );
+
+    const skippedByValidation = entries.length - validEntries.length;
+    if (skippedByValidation > 0) {
+      errors.push(
+        `${skippedByValidation}개 문항: 저장 필수값(정답·주어진 단어) 부족으로 제외됨`
+      );
+    }
+
+    if (validEntries.length === 0) {
+      const detail = errors.length ? `\n\n${errors.slice(0, 10).join("\n")}` : "";
       alert(`등록할 Writing 문항을 찾지 못했습니다.${detail}`);
       return false;
     }
@@ -317,31 +333,102 @@ export default function TeacherQuestionBankTab() {
     const setId = createSetId();
     const resolvedLevel = String(questionLevel ?? "").trim();
 
+    const payload = normalizeWritingFieldsList(
+      validEntries.map((item) => ({
+        ...item,
+        level: resolvedLevel,
+        subject: "writing",
+        type: "writing",
+      }))
+    ).filter(
+      (item) =>
+        String(item.answer ?? "").trim() &&
+        (ensureWordArray(item.scrambledWords).length > 0 ||
+          String(item.givenWords ?? "").trim())
+    );
+
+    if (payload.length === 0) {
+      alert("정규화 후 저장 가능한 Writing 문항이 없습니다.");
+      return false;
+    }
+
+    const registerOneByOne = () => {
+      let bank = loadQuestionBank();
+      const registerErrors = [];
+
+      payload.forEach((item, index) => {
+        try {
+          bank = addQuestion({
+            subject: "writing",
+            type: "writing",
+            prompt: item.prompt,
+            answer: item.answer,
+            level: item.level,
+            givenWords: item.givenWords,
+            referenceSentence: item.referenceSentence,
+            scrambledWords: item.scrambledWords,
+            setId,
+            setName: resolvedSetName,
+          });
+        } catch (itemError) {
+          console.error(`Writing item ${index + 1} failed:`, itemError);
+          registerErrors.push(
+            `${index + 1}번째 저장 실패: ${itemError?.message ?? "알 수 없음"}`
+          );
+        }
+      });
+
+      return { bank, registerErrors };
+    };
+
     try {
-      const next = addQuestionsBulk(
-        entries.map((item) => ({
-          ...item,
-          level: resolvedLevel,
-          subject: "writing",
-          type: "writing",
-        })),
-        {
+      let next;
+      let registerErrors = [];
+
+      try {
+        next = addQuestionsBulk(payload, {
           setId,
           setName: resolvedSetName,
+        });
+      } catch (bulkError) {
+        console.error("Writing bulk save failed, falling back:", bulkError);
+        const fallback = registerOneByOne();
+        next = fallback.bank;
+        registerErrors = [
+          `일괄 저장 실패 — 개별 저장으로 전환: ${bulkError?.message ?? "알 수 없음"}`,
+          ...fallback.registerErrors,
+        ];
+      }
+
+      if (registerErrors.some((msg) => msg.includes("저장 실패"))) {
+        const savedCount =
+          payload.length -
+          registerErrors.filter((msg) => msg.includes("저장 실패")).length;
+        if (savedCount <= 0) {
+          alert(
+            `문제은행 저장에 실패했습니다.\n${registerErrors.slice(0, 8).join("\n")}`
+          );
+          return false;
         }
-      );
+        errors.push(...registerErrors);
+      }
+
       setQuestions(next);
       setPasteText("");
       setMaterialSetName("");
 
       const levelNote = resolvedLevel ? "" : "\n(레벨 미선택 — 빈 값으로 저장됨)";
+      const failedCount = registerErrors.filter((msg) =>
+        msg.includes("저장 실패")
+      ).length;
+      const savedCount = payload.length - failedCount;
       const errorNote =
         errors.length > 0
-          ? `\n\n참고 ${errors.length}건:\n${errors.slice(0, 5).join("\n")}`
+          ? `\n\n참고·건너뜀 ${errors.length}건:\n${errors.slice(0, 8).join("\n")}`
           : "";
 
       alert(
-        `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${levelNote}${errorNote}`
+        `시험 자료 "${resolvedSetName}" — Writing ${savedCount}문항이 등록되었습니다!${levelNote}${errorNote}`
       );
       return true;
     } catch (error) {
@@ -405,7 +492,14 @@ export default function TeacherQuestionBankTab() {
       }
 
       if (isWritingPaste) {
-        handleWritingBulkRegister(pasteText);
+        try {
+          handleWritingBulkRegister(pasteText);
+        } catch (error) {
+          console.error("Writing paste analyze failed:", error);
+          alert(
+            `Writing 등록 중 예기치 않은 오류:\n${error?.message ?? "알 수 없는 오류"}`
+          );
+        }
         return;
       }
 

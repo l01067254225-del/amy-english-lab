@@ -18,6 +18,7 @@ import {
 } from "./examSetStorage";
 import { formatAcceptedAnswerDisplay, splitAcceptedAnswers } from "./grade";
 import { isReadingSubject, resolveQuestionOrder, sortReadingQuestions } from "./readingQuestionOrder";
+import { normalizeWritingFields } from "./writingQuestion";
 
 const QUESTION_BANK_KEY = "amy-test-question-bank";
 const EXAM_SETS_KEY = "amy-test-exam-sets";
