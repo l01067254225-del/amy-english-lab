@@ -18,7 +18,10 @@ function serializeSubjectiveBlock(question, index) {
 }
 
 function serializeWritingBlock(question) {
-  return [question.prompt, question.givenWords ?? "", question.answer].join("\n");
+  const referenceLine =
+    String(question.referenceSentence ?? "").trim() ||
+    String(question.givenWords ?? "").trim();
+  return [question.prompt, referenceLine, question.answer].join("\n");
 }
 
 function ensureOptions(options) {

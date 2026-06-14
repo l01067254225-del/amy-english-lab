@@ -164,6 +164,8 @@ export function addQuestion({
   passageId = null,
   level = "",
   givenWords = "",
+  referenceSentence = "",
+  scrambledWords = [],
   setId = "",
   setName = "",
   materialSetId = "",
@@ -224,6 +226,8 @@ export function addQuestion({
     item = normalizeWritingFields({
       ...item,
       givenWords: String(givenWords ?? "").trim(),
+      referenceSentence: String(referenceSentence ?? "").trim(),
+      scrambledWords,
     });
   }
 
@@ -284,6 +288,8 @@ export function addQuestionsBulk(
       question = normalizeWritingFields({
         ...question,
         givenWords: String(item.givenWords ?? "").trim(),
+        referenceSentence: String(item.referenceSentence ?? "").trim(),
+        scrambledWords: item.scrambledWords,
       });
     }
 

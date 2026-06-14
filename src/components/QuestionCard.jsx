@@ -1,6 +1,6 @@
 import { getAnswerFeedback, gradeQuestion } from "../utils/grade";
 import { getVocaQuestionGuide } from "../utils/vocaExamBuilder";
-import { isWritingQuestion, WRITING_GUIDE_TEXT } from "../utils/writingQuestion";
+import { isWritingQuestion, WRITING_GUIDE_TEXT, getWritingScrambledHint } from "../utils/writingQuestion";
 import SentenceArrange from "./SentenceArrange";
 
 export default function QuestionCard({
@@ -140,7 +140,7 @@ export default function QuestionCard({
           >
             [{WRITING_GUIDE_TEXT}]
           </p>
-          {question.givenWords ? (
+          {getWritingScrambledHint(question) ? (
             <div
               style={{
                 marginTop: 10,
@@ -152,7 +152,7 @@ export default function QuestionCard({
                 lineHeight: 1.6,
               }}
             >
-              <strong>주어진 단어:</strong> {question.givenWords}
+              <strong>스크램블 힌트 단어:</strong> {getWritingScrambledHint(question)}
             </div>
           ) : null}
         </>

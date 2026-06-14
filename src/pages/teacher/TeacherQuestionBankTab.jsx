@@ -44,6 +44,7 @@ import {
   getWritingPasteHint,
   parseWritingEntries,
 } from "../../utils/parseWritingText";
+import { getWritingScrambledHint } from "../../utils/writingQuestion";
 import { EMPTY_MCQ_OPTIONS, isValidMcqAnswer } from "../../utils/mcqOptions";
 import { LEVEL_OPTIONS } from "../../utils/levels";
 
@@ -1096,11 +1097,17 @@ function QuestionCardBody({ question, compact = false }) {
     <>
       <p style={compact ? nestedPromptStyle : promptStyle}>{question.prompt}</p>
 
-      {isWritingItem && question.givenWords ? (
+      {isWritingItem && getWritingScrambledHint(question) ? (
         <div style={writingGivenWordsBoxStyle}>
-          <span style={writingGivenWordsLabelStyle}>주어진 단어</span>
-          <span>{question.givenWords}</span>
+          <span style={writingGivenWordsLabelStyle}>스크램블 힌트</span>
+          <span>{getWritingScrambledHint(question)}</span>
         </div>
+      ) : null}
+
+      {isWritingItem && question.referenceSentence ? (
+        <p style={{ margin: "8px 0 0", fontSize: 13, color: "#64748b" }}>
+          기준 문장: {question.referenceSentence}
+        </p>
       ) : null}
 
       {isObjective && question.options.length > 0 && (
