@@ -285,6 +285,46 @@ export default function TeacherQuestionBankTab() {
     processCsvFile(e.target.files?.[0]);
   };
 
+  const handleWritingBulkRegister = () => {
+    const { entries, errors } = parseWritingEntries(pasteText);
+
+    if (entries.length === 0) {
+      const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
+      alert(`등록할 Writing 문항을 찾지 못했습니다.${detail}`);
+      return false;
+    }
+
+    const resolvedSetName =
+      materialSetName.trim() || suggestSetName("writing", questionLevel);
+    const setId = createSetId();
+
+    const next = addQuestionsBulk(
+      entries.map((item) => ({
+        ...item,
+        level: questionLevel,
+        subject: "writing",
+        type: "writing",
+      })),
+      {
+        setId,
+        setName: resolvedSetName,
+      }
+    );
+    setQuestions(next);
+    setPasteText("");
+    setMaterialSetName("");
+
+    const errorNote =
+      errors.length > 0
+        ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
+        : "";
+
+    alert(
+      `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
+    );
+    return true;
+  };
+
   const handlePasteAnalyze = () => {
     if (!pasteText.trim()) {
       alert("붙여넣을 텍스트를 입력해 주세요.");
@@ -337,37 +377,7 @@ export default function TeacherQuestionBankTab() {
       }
 
       if (isWritingPaste) {
-        const { entries, errors } = parseWritingEntries(pasteText);
-
-        if (entries.length === 0) {
-          const detail = errors.length ? `\n\n${errors.slice(0, 5).join("\n")}` : "";
-          alert(`등록할 Writing 문항을 찾지 못했습니다.${detail}`);
-          return;
-        }
-
-        const resolvedSetName =
-          materialSetName.trim() || suggestSetName("writing", questionLevel);
-        const setId = createSetId();
-
-        const next = addQuestionsBulk(
-          entries.map((item) => ({ ...item, level: questionLevel })),
-          {
-            setId,
-            setName: resolvedSetName,
-          }
-        );
-        setQuestions(next);
-        setPasteText("");
-        setMaterialSetName("");
-
-        const errorNote =
-          errors.length > 0
-            ? `\n\n건너뛴 항목 ${errors.length}건:\n${errors.slice(0, 3).join("\n")}`
-            : "";
-
-        alert(
-          `시험 자료 "${resolvedSetName}" — Writing ${entries.length}문항이 등록되었습니다!${errorNote}`
-        );
+        handleWritingBulkRegister();
         return;
       }
 

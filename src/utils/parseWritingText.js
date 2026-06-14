@@ -2,6 +2,28 @@ import { shuffleArray } from "./shuffle";
 
 const HANGUL = /[\uAC00-\uD7A3]/u;
 
+/** 붙여넣기 텍스트 → 빈 줄(\n+) 무시하고 비어 있지 않은 줄만 추출 */
+export function extractWritingPasteLines(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** 비어 있지 않은 줄을 3줄씩 [한글, 기준문장, 모범답안] 세트로 묶음 */
+export function groupWritingLinesIntoTriplets(lines) {
+  const safeLines = Array.isArray(lines) ? lines : [];
+  const triplets = [];
+
+  for (let index = 0; index + 2 < safeLines.length; index += 3) {
+    triplets.push([safeLines[index], safeLines[index + 1], safeLines[index + 2]]);
+  }
+
+  return triplets;
+}
+
 /** 기준 문장을 단어 단위로 분리 (앞뒤 구두점 정리) */
 export function tokenizeSentenceIntoWords(sentence) {
   return String(sentence ?? "")
@@ -43,7 +65,8 @@ function isLegacyCommaWordList(line) {
   return spaceWordCount <= commaParts.length;
 }
 
-function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
+/** 3줄 → Writing 문항 객체 (prompt / givenWords·scrambledWords / answer) */
+export function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
   const koreanPrompt = String(prompt ?? "").trim();
   const referenceText = String(referenceLine ?? "").trim();
   const modelAnswer = String(answer ?? "").trim();
@@ -83,45 +106,37 @@ function buildWritingQuestionFromLines(prompt, referenceLine, answer) {
 export function parseWritingBlock(block) {
   const lines = String(block ?? "")
     .replace(/\r/g, "")
-    .split("\n")
+    .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
 
   if (lines.length < 3) return null;
 
-  const prompt = lines[0];
-  const referenceLine = lines[1];
-  const answer = lines.slice(2).join(" ");
-
-  return buildWritingQuestionFromLines(prompt, referenceLine, answer);
+  return buildWritingQuestionFromLines(lines[0], lines[1], lines[2]);
 }
 
+/**
+ * Writing 붙여넣기 일괄 파싱
+ * - 빈 줄 유무와 관계없이 비어 있지 않은 줄을 3줄씩 한 문항으로 묶음
+ */
 export function parseWritingEntries(text) {
-  const normalized = String(text ?? "").replace(/\r\n/g, "\n").trim();
-  if (!normalized) return { entries: [], errors: [] };
-
-  const blocks = normalized
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
+  const lines = extractWritingPasteLines(text);
+  if (lines.length === 0) return { entries: [], errors: [] };
 
   const entries = [];
   const errors = [];
+  const triplets = groupWritingLinesIntoTriplets(lines);
+  const remainder = lines.length % 3;
 
-  const candidates =
-    blocks.length > 1
-      ? blocks
-      : (() => {
-          const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
-          const grouped = [];
-          for (let index = 0; index + 2 < lines.length; index += 3) {
-            grouped.push(lines.slice(index, index + 3).join("\n"));
-          }
-          return grouped.length > 0 ? grouped : [normalized];
-        })();
+  if (remainder !== 0) {
+    errors.push(
+      `입력 ${lines.length}줄 — 3줄 단위로 나누어 떨어지지 않습니다. 마지막 ${remainder}줄을 확인해 주세요.`
+    );
+  }
 
-  candidates.forEach((block, index) => {
-    const parsed = parseWritingBlock(block);
+  triplets.forEach(([prompt, referenceLine, answer], index) => {
+    const parsed = buildWritingQuestionFromLines(prompt, referenceLine, answer);
+
     if (!parsed) {
       errors.push(
         `${index + 1}번째 영작: 한글 뜻 · 기준 문장 · 모범 답안 3줄 형식을 인식하지 못했습니다.`
@@ -141,17 +156,21 @@ export function parseWritingEntries(text) {
 }
 
 export function getWritingPasteExample() {
-  return `나는 매일 학교에 간다.
-I go to school every day.
-I go to school every day.
+  return `그녀는 해안을 따라 차를 몰았다.
+She drove along the coast.
+She drove along the coast.
 
-그는 어제 도서관에서 책을 읽었다.
-He read a book at the library yesterday.
-He read a book at the library yesterday.`;
+나는 오늘 아침 식사를 걸렀다.
+I skipped breakfast today.
+I skipped breakfast today.
+
+첫 페이지는 건너뛰자.
+Let's skip the first page.
+Let's skip the first page.`;
 }
 
 export function getWritingPasteHint() {
-  return "Writing: 문항마다 [한글 뜻 / 기준 문장 / 모범 답안] 3줄씩 입력하세요. 기준 문장의 단어가 무작위로 섞여 시험지 힌트로 제공됩니다. 빈 줄로 문항을 구분할 수 있습니다.";
+  return "Writing: [한글 뜻 / 기준 문장 / 모범 답안] 순으로 3줄씩 입력하세요. 문항 사이 빈 줄은 넣어도 되고 생략해도 됩니다. 기준 문장 단어가 섞여 '주어진 단어'로 저장됩니다.";
 }
 
 export function formatScrambledWordsForDisplay(scrambledWords) {
