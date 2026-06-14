@@ -110,49 +110,41 @@ function toNumberedItems(questions, startNumber) {
   }));
 }
 
-/** Mix: 앞 절반 뜻 · 뒤 절반 철자 (배열 순서 기준). 단일 유형은 한 섹션만 */
+function isVocaSpellingQuestion(question) {
+  return question?.type === "spelling";
+}
+
+/**
+ * type 기준 분류
+ * - meaning: 영어 단어(prompt) → 한글 뜻 입력
+ * - spelling: 한글 뜻(prompt) → 영어 철자 입력
+ */
 export function splitVocaExamSections(questions) {
   const list = ensureArray(questions);
+  const meaningQuestions = [];
+  const spellingQuestions = [];
+
+  list.forEach((question) => {
+    if (isVocaSpellingQuestion(question)) {
+      spellingQuestions.push(question);
+      return;
+    }
+    meaningQuestions.push(question);
+  });
+
+  const meaningCount = meaningQuestions.length;
+  const spellingCount = spellingQuestions.length;
   const totalCount = list.length;
-  const hasMeaning = list.some((q) => q.type === "meaning");
-  const hasSpelling = list.some((q) => q.type === "spelling");
-  const isMixExam = hasMeaning && hasSpelling;
-
-  if (isMixExam) {
-    const halfIndex = Math.ceil(totalCount / 2);
-    const meaningSection = list.slice(0, halfIndex);
-    const spellingSection = list.slice(halfIndex);
-
-    return {
-      meaning: toNumberedItems(meaningSection, 1),
-      spelling: toNumberedItems(spellingSection, halfIndex + 1),
-      meaningRange: `1-${halfIndex}`,
-      spellingRange: `${halfIndex + 1}-${totalCount}`,
-      halfIndex,
-      totalCount,
-      isMixExam: true,
-    };
-  }
-
-  if (hasSpelling && !hasMeaning) {
-    return {
-      meaning: [],
-      spelling: toNumberedItems(list, 1),
-      meaningRange: "",
-      spellingRange: totalCount > 0 ? `1-${totalCount}` : "",
-      halfIndex: 0,
-      totalCount,
-      isMixExam: false,
-    };
-  }
+  const isMixExam = meaningCount > 0 && spellingCount > 0;
 
   return {
-    meaning: toNumberedItems(list, 1),
-    spelling: [],
-    meaningRange: totalCount > 0 ? `1-${totalCount}` : "",
-    spellingRange: "",
-    halfIndex: totalCount,
+    meaning: toNumberedItems(meaningQuestions, 1),
+    spelling: toNumberedItems(spellingQuestions, meaningCount + 1),
+    meaningRange: meaningCount > 0 ? `1-${meaningCount}` : "",
+    spellingRange:
+      spellingCount > 0 ? `${meaningCount + 1}-${totalCount}` : "",
+    halfIndex: meaningCount,
     totalCount,
-    isMixExam: false,
+    isMixExam,
   };
 }
