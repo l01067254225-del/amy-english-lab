@@ -23,7 +23,8 @@ export default function StudentTestResult({
 }) {
   const studentKey = student?.id ?? "";
   const studentName = student?.name ?? "학생";
-  const studentLevel = student.level || getStudentLevel(studentKey);
+  const studentLevel =
+    String(student?.level ?? "").trim() || getStudentLevel(studentKey) || "";
   const [savedResults, setSavedResults] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
 

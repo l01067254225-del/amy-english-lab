@@ -1,0 +1,184 @@
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { getFirestoreDb, isFirebaseConfigured } from "../firebase";
+import {
+  STUDENTS_STORAGE_KEY,
+  findStudentByLoginId,
+  loadStudents,
+} from "../utils/studentStorage";
+
+export const USERS_COLLECTION = "users";
+
+export function isStudentsFirebaseReady() {
+  return Boolean(getFirestoreDb());
+}
+
+export function studentToUserDoc(student) {
+  if (!student) return null;
+  return {
+    id: String(student.id ?? "").trim(),
+    uid: String(student.uid ?? "").trim(),
+    name: String(student.name ?? student.id ?? "").trim(),
+    level: String(student.level ?? "").trim(),
+    school: String(student.school ?? "").trim(),
+    grade: String(student.grade ?? "").trim(),
+    updatedAt: student.updatedAt || new Date().toISOString(),
+  };
+}
+
+function getUserDocRef(studentLoginId) {
+  const db = getFirestoreDb();
+  const loginId = String(studentLoginId ?? "").trim();
+  if (!db || !loginId) return null;
+  return doc(db, USERS_COLLECTION, loginId);
+}
+
+export async function upsertStudentUser(student) {
+  const payload = studentToUserDoc(student);
+  if (!payload?.id) return false;
+
+  const ref = getUserDocRef(payload.id);
+  if (!ref) return false;
+
+  try {
+    await setDoc(ref, payload, { merge: true });
+    return true;
+  } catch (error) {
+    console.error("Failed to upsert student user:", error);
+    return false;
+  }
+}
+
+export async function fetchStudentUser(studentLoginId) {
+  const loginId = String(studentLoginId ?? "").trim();
+  if (!loginId) return null;
+
+  const ref = getUserDocRef(loginId);
+  if (ref) {
+    try {
+      const snapshot = await getDoc(ref);
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        return {
+          id: String(data.id ?? loginId).trim(),
+          uid: String(data.uid ?? "").trim(),
+          name: String(data.name ?? loginId).trim(),
+          level: String(data.level ?? "").trim(),
+          school: String(data.school ?? "").trim(),
+          grade: String(data.grade ?? "").trim(),
+          updatedAt: data.updatedAt,
+        };
+      }
+    } catch (error) {
+      console.error("Failed to fetch student user:", error);
+    }
+  }
+
+  const local = findStudentByLoginId(loginId);
+  return local ? studentToUserDoc(local) : null;
+}
+
+function readLocalStudentProfile(studentLoginId) {
+  const loginId = String(studentLoginId ?? "").trim();
+  if (!loginId) return null;
+  const local = findStudentByLoginId(loginId);
+  return local ? studentToUserDoc(local) : null;
+}
+
+/**
+ * 로그인 학생 프로필 실시간 구독
+ * - Firebase users/{loginId} onSnapshot
+ * - localStorage roster 변경·주기적 폴링 (Firebase 미설정·동일 브라우저 대비)
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeStudentUser(studentLoginId, onUpdate) {
+  const loginId = String(studentLoginId ?? "").trim();
+  if (!loginId || typeof onUpdate !== "function") {
+    return () => {};
+  }
+
+  const cleanups = [];
+  let lastKey = "";
+
+  const emit = (profile) => {
+    if (!profile?.id) return;
+    const key = `${profile.level}|${profile.name}|${profile.updatedAt ?? ""}`;
+    if (key === lastKey) return;
+    lastKey = key;
+    onUpdate(profile);
+  };
+
+  const syncLocal = () => {
+    emit(readLocalStudentProfile(loginId));
+  };
+
+  syncLocal();
+
+  const pollId = window.setInterval(syncLocal, 4000);
+  cleanups.push(() => window.clearInterval(pollId));
+
+  const onStorage = (event) => {
+    if (event.key === STUDENTS_STORAGE_KEY) syncLocal();
+  };
+  window.addEventListener("storage", onStorage);
+  cleanups.push(() => window.removeEventListener("storage", onStorage));
+
+  const onStudentsUpdated = () => syncLocal();
+  window.addEventListener("amy-students-updated", onStudentsUpdated);
+  cleanups.push(() =>
+    window.removeEventListener("amy-students-updated", onStudentsUpdated)
+  );
+
+  const ref = getUserDocRef(loginId);
+  if (ref) {
+    const unsubSnapshot = onSnapshot(
+      ref,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          syncLocal();
+          return;
+        }
+        const data = snapshot.data();
+        emit({
+          id: String(data.id ?? loginId).trim(),
+          uid: String(data.uid ?? "").trim(),
+          name: String(data.name ?? loginId).trim(),
+          level: String(data.level ?? "").trim(),
+          school: String(data.school ?? "").trim(),
+          grade: String(data.grade ?? "").trim(),
+          updatedAt: data.updatedAt,
+        });
+      },
+      (error) => {
+        console.error("Student user snapshot error:", error);
+        syncLocal();
+      }
+    );
+    cleanups.push(unsubSnapshot);
+  }
+
+  return () => {
+    cleanups.forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (error) {
+        console.warn("Student subscription cleanup failed:", error);
+      }
+    });
+  };
+}
+
+export async function syncAllStudentsToFirebase() {
+  if (!isFirebaseConfigured()) return { synced: 0, failed: 0 };
+
+  const students = loadStudents();
+  let synced = 0;
+  let failed = 0;
+
+  for (const student of students) {
+    const ok = await upsertStudentUser(student);
+    if (ok) synced += 1;
+    else failed += 1;
+  }
+
+  return { synced, failed };
+}

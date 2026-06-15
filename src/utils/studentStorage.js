@@ -73,6 +73,7 @@ function readStudentsRaw() {
 
 function writeStudents(students) {
   localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(students));
+  window.dispatchEvent(new CustomEvent("amy-students-updated"));
 }
 
 export function loadStudents() {

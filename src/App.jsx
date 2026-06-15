@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import StudentGate from "./pages/StudentGate";
 import StudentLogin from "./pages/StudentLogin";
 import TeacherApp from "./pages/TeacherApp";
+import { fetchStudentUser } from "./services/studentsApi";
 import { bootstrapAuthSession } from "./utils/authSession";
 import { setStudentSession, clearStudentSession } from "./utils/studentAuth";
 import { findStudent } from "./data/students";
@@ -22,13 +23,13 @@ export default function App() {
     setAuthReady(true);
   }, []);
 
-  const handleLogin = (id, password) => {
+  const handleLogin = async (id, password) => {
     if (verifyAdmin(id, password)) {
       clearStudentSession();
       clearStudentGateState();
       setTeacherSession();
       setView("teacher");
-      return;
+      return null;
     }
 
     const student = findStudent(id, password);
@@ -37,7 +38,22 @@ export default function App() {
     }
 
     clearTeacherSession();
-    setStudentSession(student);
+
+    let mergedStudent = student;
+    try {
+      const remoteProfile = await fetchStudentUser(student.id);
+      if (remoteProfile) {
+        mergedStudent = {
+          ...student,
+          name: remoteProfile.name || student.name,
+          level: remoteProfile.level || student.level,
+        };
+      }
+    } catch (error) {
+      console.warn("Failed to fetch latest student profile on login:", error);
+    }
+
+    setStudentSession(mergedStudent);
     setView("student");
     return null;
   };

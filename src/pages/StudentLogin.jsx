@@ -4,15 +4,23 @@ export default function StudentLogin({ onLogin, onBack }) {
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const loginError = onLogin(id, password);
-    if (loginError) {
-      setError(loginError);
-      return;
-    }
+    setSubmitting(true);
     setError("");
+    try {
+      const loginError = await Promise.resolve(onLogin(id, password));
+      if (loginError) {
+        setError(loginError);
+      }
+    } catch (submitError) {
+      console.error(submitError);
+      setError("로그인 처리 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -70,8 +78,8 @@ export default function StudentLogin({ onLogin, onBack }) {
             <p style={{ color: "#b91c1c", margin: "0 0 12px", fontSize: 14 }}>{error}</p>
           )}
 
-          <button type="submit" style={btnStyle}>
-            입장
+          <button type="submit" style={btnStyle} disabled={submitting}>
+            {submitting ? "확인 중..." : "입장"}
           </button>
         </form>
         {onBack && (

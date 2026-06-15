@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAllResults } from "../services/resultsApi";
-import { getStudentSession, clearStudentSession } from "../utils/studentAuth";
+import { subscribeStudentUser } from "../services/studentsApi";
+import { getStudentSession, setStudentSession, clearStudentSession } from "../utils/studentAuth";
 import {
   clearStudentGateState,
   loadStudentGateState,
@@ -24,6 +25,36 @@ export default function StudentGate({ onBack }) {
     setSession(getStudentSession());
     setSessionReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!sessionReady || !session?.id) return;
+
+    const studentId = session.id;
+
+    const applyProfile = (profile) => {
+      if (!profile?.id || profile.id !== studentId) return;
+
+      const nextSession = {
+        id: studentId,
+        name: String(profile.name ?? studentId).trim(),
+        level: String(profile.level ?? "").trim(),
+      };
+
+      setSession((prev) => {
+        if (
+          prev?.level === nextSession.level &&
+          prev?.name === nextSession.name
+        ) {
+          return prev;
+        }
+        setStudentSession(nextSession);
+        return nextSession;
+      });
+    };
+
+    const unsubscribe = subscribeStudentUser(studentId, applyProfile);
+    return unsubscribe;
+  }, [sessionReady, session?.id]);
 
   useEffect(() => {
     if (!sessionReady) return;

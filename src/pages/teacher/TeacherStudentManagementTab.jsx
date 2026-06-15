@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { upsertStudentUser } from "../../services/studentsApi";
 import {
   addStudent,
   deleteStudent,
@@ -26,9 +27,13 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const [formError, setFormError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const syncStudents = (next) => {
+  const syncStudents = (next, { changedStudent = null, skipFirebase = false } = {}) => {
     setStudents(next);
     onStudentsChange?.(next);
+
+    if (!skipFirebase && changedStudent) {
+      void upsertStudentUser(changedStudent);
+    }
   };
 
   const filteredStudents = useMemo(() => {
@@ -97,7 +102,10 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
       const next = editingUid
         ? updateStudent(editingUid, payload)
         : addStudent(payload);
-      syncStudents(next);
+      const savedStudent = editingUid
+        ? next.find((student) => student.uid === editingUid)
+        : next[0];
+      syncStudents(next, { changedStudent: savedStudent });
       resetForm();
     } catch (error) {
       setFormError(error.message || "학생 정보를 저장하지 못했습니다.");
@@ -120,7 +128,7 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
 
   const handleDelete = (student) => {
     if (!confirm(`${student.name} (${student.id}) 학생 계정을 삭제할까요?`)) return;
-    syncStudents(deleteStudent(student.uid));
+    syncStudents(deleteStudent(student.uid), { skipFirebase: true });
     if (editingUid === student.uid) resetForm();
   };
 

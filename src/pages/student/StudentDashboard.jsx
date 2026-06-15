@@ -17,7 +17,8 @@ export default function StudentDashboard({
   const studentKey = student?.id ?? "";
   const studentName = student?.name || studentKey || "학생";
   const today = getTodayDateString();
-  const studentLevel = student.level || getStudentLevel(studentKey);
+  const studentLevel =
+    String(student?.level ?? "").trim() || getStudentLevel(studentKey) || "";
 
   const [savedResults, setSavedResults] = useState([]);
 

@@ -48,9 +48,14 @@ service cloud.firestore {
     match /results/{document=**} {
       allow read, write: if true;
     }
+    match /users/{userId} {
+      allow read, write: if true;
+    }
   }
 }
 ```
+
+> `users` 컬렉션: 학생 로그인 아이디(`amy01` 등)를 문서 ID로 사용합니다. 관리자가 레벨을 수정하면 학생 화면에 실시간 반영됩니다.
 
 > 실제 운영 시에는 로그인·권한 규칙을 강화하는 것이 좋습니다.
 
