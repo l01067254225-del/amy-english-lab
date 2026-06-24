@@ -29,6 +29,31 @@ import {
   thTdStyle,
 } from "./teacherStyles";
 
+function filterRegistryRows(rows, { level, submission, searchTerm }) {
+  const query = String(searchTerm ?? "").trim().toLowerCase();
+
+  return rows.filter((row) => {
+    if (level !== "all" && row.level !== level) return false;
+
+    if (submission === "regular") {
+      if (row.isLateSubmission || row.isReview) return false;
+      if (row.submissionStatus && row.submissionStatus !== "regular") return false;
+    } else if (submission === "late") {
+      if (!(row.isLateSubmission || row.submissionStatus === "late_submission")) {
+        return false;
+      }
+    } else if (submission === "review") {
+      if (!(row.isReview || row.submissionStatus === "review")) return false;
+    }
+
+    if (!query) return true;
+    return (
+      String(row.studentName ?? "").toLowerCase().includes(query) ||
+      String(row.studentId ?? "").toLowerCase().includes(query)
+    );
+  });
+}
+
 export default function TeacherResultsTab({
   students,
   results,
@@ -38,7 +63,11 @@ export default function TeacherResultsTab({
 }) {
   const [levelFilter, setLevelFilter] = useState("all");
   const [submissionFilter, setSubmissionFilter] = useState("all");
-  const [nameQuery, setNameQuery] = useState("");
+  const [nameInput, setNameInput] = useState("");
+  const [appliedLevelFilter, setAppliedLevelFilter] = useState("all");
+  const [appliedSubmissionFilter, setAppliedSubmissionFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searching, setSearching] = useState(false);
   const [printTarget, setPrintTarget] = useState(null);
   const [incorrectTarget, setIncorrectTarget] = useState(null);
   const [detailTarget, setDetailTarget] = useState(null);
@@ -74,29 +103,43 @@ export default function TeacherResultsTab({
       );
   }, [safeResults, studentMap, safeStudents]);
 
-  const filteredRows = useMemo(() => {
-    const query = nameQuery.trim().toLowerCase();
-    return registryRows.filter((row) => {
-      if (levelFilter !== "all" && row.level !== levelFilter) return false;
+  const filteredRows = useMemo(
+    () =>
+      filterRegistryRows(registryRows, {
+        level: appliedLevelFilter,
+        submission: appliedSubmissionFilter,
+        searchTerm,
+      }),
+    [registryRows, appliedLevelFilter, appliedSubmissionFilter, searchTerm]
+  );
 
-      if (submissionFilter === "regular") {
-        if (row.isLateSubmission || row.isReview) return false;
-        if (row.submissionStatus && row.submissionStatus !== "regular") return false;
-      } else if (submissionFilter === "late") {
-        if (!(row.isLateSubmission || row.submissionStatus === "late_submission")) {
-          return false;
-        }
-      } else if (submissionFilter === "review") {
-        if (!(row.isReview || row.submissionStatus === "review")) return false;
-      }
+  const hasActiveFilters =
+    appliedLevelFilter !== "all" ||
+    appliedSubmissionFilter !== "all" ||
+    Boolean(searchTerm.trim());
 
-      if (!query) return true;
-      return (
-        String(row.studentName ?? "").toLowerCase().includes(query) ||
-        String(row.studentId ?? "").toLowerCase().includes(query)
-      );
-    });
-  }, [registryRows, levelFilter, submissionFilter, nameQuery]);
+  const handleSearch = async () => {
+    setAppliedLevelFilter(levelFilter);
+    setAppliedSubmissionFilter(submissionFilter);
+    setSearchTerm(nameInput.trim());
+
+    if (!onRefresh) return;
+
+    setSearching(true);
+    try {
+      await onRefresh();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSearchKeyDown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    handleSearch();
+  };
 
   const printRow = printTarget
     ? registryRows.find((row) => row.id === printTarget.id) ?? printTarget
@@ -227,21 +270,30 @@ export default function TeacherResultsTab({
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14, fontWeight: 700, color: "#334155" }}>
             학생 이름 검색
-            <input
-              type="search"
-              value={nameQuery}
-              onChange={(e) => setNameQuery(e.target.value)}
-              placeholder="이름 또는 ID 검색"
-              style={{ ...inputStyle, marginTop: 0 }}
-            />
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+              <input
+                type="search"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="이름 또는 ID 검색"
+                style={{ ...inputStyle, marginTop: 0, flex: 1, minWidth: 0 }}
+              />
+              <button
+                type="button"
+                onClick={handleSearch}
+                disabled={loading || searching}
+                style={btnSearchStyle}
+              >
+                {searching ? "검색 중..." : "검색"}
+              </button>
+            </div>
           </label>
         </div>
 
         <p style={{ margin: "0 0 12px", fontSize: 14, color: "#64748b" }}>
           총 {filteredRows.length}건
-          {levelFilter !== "all" || submissionFilter !== "all" || nameQuery.trim()
-            ? " (필터 적용됨)"
-            : ""}
+          {hasActiveFilters ? " (필터 적용됨)" : ""}
         </p>
 
         {safeResults.length === 0 ? (
@@ -447,4 +499,17 @@ const detailRowBtnStyle = {
 
 const clickableRowStyle = {
   cursor: "pointer",
+};
+
+const btnSearchStyle = {
+  padding: "12px 18px",
+  borderRadius: 10,
+  border: "none",
+  background: "#7c3aed",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: 15,
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
