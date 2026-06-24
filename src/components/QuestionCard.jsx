@@ -152,7 +152,7 @@ export default function QuestionCard({
                 lineHeight: 1.6,
               }}
             >
-              <strong>스크램블 힌트 단어:</strong> {getWritingScrambledHint(question)}
+              <strong>힌트 단어:</strong> {getWritingScrambledHint(question)}
             </div>
           ) : null}
         </>

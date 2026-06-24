@@ -451,12 +451,6 @@ export default function StudentExamTake({
           </p>
         )}
 
-        {!submitted && draftRestored && (
-          <p style={autosaveBannerStyle}>
-            💾 답안이 자동 저장됩니다. 창을 닫거나 새로고침해도 이어서 풀 수 있습니다.
-          </p>
-        )}
-
         {isReadingMode ? (
           <div
             style={{
@@ -584,18 +578,6 @@ const retestBannerStyle = {
   fontSize: 14,
   fontWeight: 600,
   lineHeight: 1.6,
-};
-
-const autosaveBannerStyle = {
-  margin: "0 0 16px",
-  padding: "10px 14px",
-  borderRadius: 10,
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1d4ed8",
-  fontSize: 13,
-  fontWeight: 600,
-  lineHeight: 1.5,
 };
 
 const loadingCardStyle = {
