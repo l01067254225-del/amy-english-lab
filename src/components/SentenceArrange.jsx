@@ -1,5 +1,3 @@
-import { ANSWER_CLEAR_CONFIRM_MESSAGE } from "./AnswerClearButton";
-
 export default function SentenceArrange({
   question,
   userAnswer,
@@ -25,12 +23,6 @@ export default function SentenceArrange({
   const removeLast = () => {
     if (submitted || selectedKeys.length === 0) return;
     updateKeys(selectedKeys.slice(0, -1));
-  };
-
-  const clearAll = () => {
-    if (submitted || selectedKeys.length === 0) return;
-    if (!window.confirm(ANSWER_CLEAR_CONFIRM_MESSAGE)) return;
-    onAnswer(question.id, "");
   };
 
   const chipStyle = {
@@ -65,18 +57,6 @@ export default function SentenceArrange({
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button type="button" onClick={removeLast} style={smallBtnStyle}>
             한 단어 취소
-          </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            disabled={selectedKeys.length === 0}
-            style={{
-              ...smallBtnStyle,
-              opacity: selectedKeys.length === 0 ? 0.45 : 1,
-              cursor: selectedKeys.length === 0 ? "not-allowed" : "pointer",
-            }}
-          >
-            전체 삭제
           </button>
         </div>
       )}

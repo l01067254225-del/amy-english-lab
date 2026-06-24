@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import AnswerClearButton from "../../components/AnswerClearButton";
+import ExamTakeScoreBar from "../../components/ExamTakeScoreBar";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
 import { splitVocaExamSections, resolveVocaMeaningPrompt, resolveVocaSpellingPrompt } from "../../utils/vocaExamBuilder";
 
@@ -30,25 +30,17 @@ function VocaQuestionRow({ item, userAnswers, submitted, onAnswer, placeholder, 
       <div style={styles.questionLabel}>
         Q{number}. <span style={styles.promptText}>{promptText}</span>
       </div>
-      <div style={styles.inputRow}>
-        <input
-          type="text"
-          value={answer}
-          disabled={submitted}
-          onChange={(event) => onAnswer(question.id, event.target.value)}
-          placeholder={placeholder}
-          style={{
-            ...styles.input,
-            backgroundColor: submitted ? "#f1f5f9" : "#f8fafc",
-          }}
-        />
-        {!submitted ? (
-          <AnswerClearButton
-            disabled={!String(answer ?? "").length}
-            onClear={() => onAnswer(question.id, "")}
-          />
-        ) : null}
-      </div>
+      <input
+        type="text"
+        value={answer}
+        disabled={submitted}
+        onChange={(event) => onAnswer(question.id, event.target.value)}
+        placeholder={placeholder}
+        style={{
+          ...styles.input,
+          backgroundColor: submitted ? "#f1f5f9" : "#f8fafc",
+        }}
+      />
       {submitted ? (
         <p
           style={{
@@ -108,6 +100,8 @@ export default function StudentVocaTest({
   userAnswers = {},
   submitted = false,
   onAnswer = () => {},
+  hasAnyAnswer = false,
+  onClearAll,
 }) {
   const sections = useMemo(() => {
     if (!Array.isArray(questions) || questions.length === 0) {
@@ -128,7 +122,13 @@ export default function StudentVocaTest({
 
   return (
     <div style={styles.card}>
-      <div style={styles.scoreHeader}>문항당 1점 · 총 {totalCount}점</div>
+      <ExamTakeScoreBar
+        total={totalCount}
+        submitted={submitted}
+        hasAnswers={hasAnyAnswer}
+        onClearAll={onClearAll}
+        style={styles.scoreHeader}
+      />
 
       <VocaSectionBlock
         title="다음 단어의 뜻을 쓰시오."
@@ -169,9 +169,6 @@ const styles = {
     marginBottom: 32,
     paddingBottom: 16,
     borderBottom: "1px solid #f1f5f9",
-    color: "#475569",
-    fontWeight: 600,
-    fontSize: 16,
   },
   meaningSection: {
     marginBottom: 48,
@@ -214,14 +211,8 @@ const styles = {
     fontSize: 20,
     fontWeight: 700,
   },
-  inputRow: {
-    display: "flex",
-    gap: 8,
-    alignItems: "center",
-  },
   input: {
-    flex: 1,
-    minWidth: 0,
+    width: "100%",
     padding: "12px 14px",
     borderRadius: 12,
     border: "1px solid #e2e8f0",

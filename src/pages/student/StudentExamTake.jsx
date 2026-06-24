@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import QuestionCard from "../../components/QuestionCard";
+import ExamTakeScoreBar from "../../components/ExamTakeScoreBar";
 import RetestWrongAnswerReview from "../../components/RetestWrongAnswerReview";
 import SiteHeader from "../../components/SiteHeader";
 import StudentReadingTest from "./StudentReadingTest";
@@ -266,6 +267,19 @@ export default function StudentExamTake({
     });
   };
 
+  const hasAnyAnswer = useMemo(
+    () => flatQuestions.some((q) => String(answers[q.id] ?? "").length > 0),
+    [answers, flatQuestions]
+  );
+
+  const clearAllAnswers = useCallback(() => {
+    setAnswers({});
+    saveExamDraft(studentKey, examId, {}, {
+      currentIndex: isReadingMode ? readingIndex : null,
+      startTime: examStartTime,
+    });
+  }, [studentKey, examId, isReadingMode, readingIndex, examStartTime]);
+
   const handleReadingIndexChange = (nextIndex) => {
     setReadingIndex(nextIndex);
     persistDraft(answers, nextIndex);
@@ -452,16 +466,24 @@ export default function StudentExamTake({
         )}
 
         {isReadingMode ? (
-          <div
-            style={{
-              background: "transparent",
-              borderRadius: 16,
-              padding: 0,
-              boxShadow: "none",
-              border: "none",
-            }}
-          >
-            <StudentReadingTest
+          <>
+            <ExamTakeScoreBar
+              total={total}
+              submitted={submitted}
+              hasAnswers={hasAnyAnswer}
+              onClearAll={clearAllAnswers}
+              style={{ marginBottom: 16 }}
+            />
+            <div
+              style={{
+                background: "transparent",
+                borderRadius: 16,
+                padding: 0,
+                boxShadow: "none",
+                border: "none",
+              }}
+            >
+              <StudentReadingTest
               passage={examView.passage}
               questions={flatQuestions}
               answers={answers}
@@ -473,7 +495,8 @@ export default function StudentExamTake({
               onSubmit={submit}
               onReset={reset}
             />
-          </div>
+            </div>
+          </>
         ) : isVocabMode ? (
           <>
             <StudentVocaTest
@@ -481,6 +504,8 @@ export default function StudentExamTake({
               userAnswers={answers}
               submitted={submitted}
               onAnswer={setAnswer}
+              hasAnyAnswer={hasAnyAnswer}
+              onClearAll={clearAllAnswers}
             />
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               {!submitted ? (
@@ -509,9 +534,13 @@ export default function StudentExamTake({
               border: "1px solid #e2e8f0",
             }}
           >
-            <p style={{ margin: "0 0 16px", color: "#64748b" }}>
-              문항당 1점 · 총 {total}점
-            </p>
+            <ExamTakeScoreBar
+              total={total}
+              submitted={submitted}
+              hasAnswers={hasAnyAnswer}
+              onClearAll={clearAllAnswers}
+              style={{ margin: "0 0 16px" }}
+            />
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {flatQuestions.map((q, idx) => (
                   <QuestionCard

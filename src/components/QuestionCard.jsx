@@ -1,7 +1,6 @@
 import { getAnswerFeedback, gradeQuestion } from "../utils/grade";
 import { getVocaQuestionGuide } from "../utils/vocaExamBuilder";
 import { isWritingQuestion, WRITING_GUIDE_TEXT, getWritingScrambledHint } from "../utils/writingQuestion";
-import AnswerClearButton from "./AnswerClearButton";
 import SentenceArrange from "./SentenceArrange";
 
 export default function QuestionCard({
@@ -226,72 +225,42 @@ export default function QuestionCard({
           ))}
         </select>
       ) : isWriting ? (
-        <div
+        <textarea
+          placeholder={inputPlaceholder}
+          value={userAnswer}
+          disabled={submitted}
+          onChange={(e) => onAnswer(question.id, e.target.value)}
+          rows={4}
           style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-start",
+            width: "100%",
             marginTop: 10,
+            padding: 12,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            boxSizing: "border-box",
+            fontSize: 15,
+            lineHeight: 1.6,
+            resize: "vertical",
+            minHeight: 96,
           }}
-        >
-          <textarea
-            placeholder={inputPlaceholder}
-            value={userAnswer}
-            disabled={submitted}
-            onChange={(e) => onAnswer(question.id, e.target.value)}
-            rows={4}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: 12,
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              boxSizing: "border-box",
-              fontSize: 15,
-              lineHeight: 1.6,
-              resize: "vertical",
-              minHeight: 96,
-            }}
-          />
-          {!submitted ? (
-            <AnswerClearButton
-              disabled={!String(userAnswer ?? "").length}
-              onClear={() => onAnswer(question.id, "")}
-            />
-          ) : null}
-        </div>
+        />
       ) : (
-        <div
+        <input
+          type="text"
+          placeholder={inputPlaceholder}
+          value={userAnswer}
+          disabled={submitted}
+          onChange={(e) => onAnswer(question.id, e.target.value)}
           style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
+            width: "100%",
             marginTop: 10,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            boxSizing: "border-box",
+            fontSize: 15,
           }}
-        >
-          <input
-            type="text"
-            placeholder={inputPlaceholder}
-            value={userAnswer}
-            disabled={submitted}
-            onChange={(e) => onAnswer(question.id, e.target.value)}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: 10,
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              boxSizing: "border-box",
-              fontSize: 15,
-            }}
-          />
-          {!submitted ? (
-            <AnswerClearButton
-              disabled={!String(userAnswer ?? "").length}
-              onClear={() => onAnswer(question.id, "")}
-            />
-          ) : null}
-        </div>
+        />
       )}
 
       {submitted && earned === 0 && (
