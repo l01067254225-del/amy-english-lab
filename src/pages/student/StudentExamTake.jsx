@@ -24,6 +24,7 @@ import {
 } from "../../utils/examSubmissionValidation";
 import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
+import { buildExamSubmissionMeta } from "../../utils/examSubmissionMeta";
 import { loadExamSets } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
 import { resolveExamSubject } from "../../utils/examSetBuilder";
@@ -43,6 +44,7 @@ export default function StudentExamTake({
   examId,
   isRetest = false,
   retestResultId = null,
+  isReviewMode = false,
   onBack,
   onSubmitted,
   onLogout,
@@ -112,7 +114,7 @@ export default function StudentExamTake({
   }, [isRetest, retestResultId]);
 
   useEffect(() => {
-    if (isRetest) return;
+    if (isRetest || isReviewMode) return;
 
     let cancelled = false;
 
@@ -133,7 +135,7 @@ export default function StudentExamTake({
     return () => {
       cancelled = true;
     };
-  }, [examId, studentKey, isRetest, onBack]);
+  }, [examId, studentKey, isRetest, isReviewMode, onBack]);
 
   useEffect(() => {
     if (submitted) return;
@@ -184,6 +186,11 @@ export default function StudentExamTake({
       );
     });
 
+    const submissionMeta = buildExamSubmissionMeta(exam, {
+      isReviewMode: isReviewMode && !isRetest,
+      submittedAt: new Date().toISOString(),
+    });
+
     const baseRecord = {
       studentId: studentKey,
       studentName: student.name || studentKey,
@@ -193,6 +200,7 @@ export default function StudentExamTake({
       total,
       submittedAt: new Date().toISOString(),
       details,
+      ...submissionMeta,
     };
 
     setSaving(true);

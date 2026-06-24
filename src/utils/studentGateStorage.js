@@ -5,6 +5,7 @@ const DEFAULT_STATE = {
   activeExamId: null,
   activeResultId: null,
   retestResultId: null,
+  examReviewMode: false,
 };
 
 export function loadStudentGateState() {
@@ -17,6 +18,7 @@ export function loadStudentGateState() {
       activeExamId: parsed?.activeExamId ?? null,
       activeResultId: parsed?.activeResultId ?? null,
       retestResultId: parsed?.retestResultId ?? null,
+      examReviewMode: Boolean(parsed?.examReviewMode),
     };
   } catch {
     return { ...DEFAULT_STATE };
@@ -31,6 +33,7 @@ export function saveStudentGateState(state) {
       activeExamId: state.activeExamId ?? null,
       activeResultId: state.activeResultId ?? null,
       retestResultId: state.retestResultId ?? null,
+      examReviewMode: Boolean(state.examReviewMode),
     })
   );
 }

@@ -2,11 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import SiteHeader from "../../components/SiteHeader";
 import { deleteResult, fetchAllResults, formatDate } from "../../services/resultsApi";
 import { getExamQuestionCount, getExamSubjectSummary } from "../../utils/examHelpers";
+import {
+  getStudentExamCatalog,
+  isExamScheduledPast,
+  isExamScheduledToday,
+  resolveExamStartAction,
+} from "../../utils/examAvailability";
 import { getStudentLevel } from "../../utils/levelStats";
 import { formatTestDate, formatLevelLabel, getTodayDateString } from "../../utils/levels";
-import { getAvailableExamsForStudent } from "../../utils/questionBankStorage";
-import { ensureArray } from "../../utils/safeData";
 import { getStudentExamStatus } from "../../utils/studentExamStatus";
+import {
+  formatSubmissionStatusLabel,
+  getSubmissionStatusBadgeStyle,
+} from "../../utils/examSubmissionMeta";
+import { ensureArray } from "../../utils/safeData";
 
 export default function StudentDashboard({
   student,
@@ -22,8 +31,8 @@ export default function StudentDashboard({
 
   const [savedResults, setSavedResults] = useState([]);
 
-  const availableExams = useMemo(
-    () => ensureArray(getAvailableExamsForStudent(studentLevel, today)),
+  const { activeExams, pastExams } = useMemo(
+    () => getStudentExamCatalog(studentLevel, today),
     [studentLevel, today]
   );
 
@@ -69,21 +78,66 @@ export default function StudentDashboard({
 
   const examStatusById = useMemo(() => {
     const map = new Map();
-    availableExams.forEach((exam) => {
+    [...activeExams, ...pastExams].forEach((exam) => {
       map.set(exam.id, getStudentExamStatus(exam.id, savedResults, studentKey));
     });
     return map;
-  }, [availableExams, savedResults, studentKey]);
+  }, [activeExams, pastExams, savedResults, studentKey]);
 
-  const handleStartExam = (examId) => {
-    const status = examStatusById.get(examId);
-    if (status?.complete) return;
-    onStartExam?.(examId);
+  const handleStartExam = (examId, options = {}) => {
+    onStartExam?.(examId, options);
   };
 
   const greeting = studentLevel
     ? `안녕하세요, ${studentName} 학생 (레벨: ${formatLevelLabel(studentLevel)})`
     : `안녕하세요, ${studentName} 학생`;
+
+  const renderExamCard = (exam, section) => {
+    const status = examStatusById.get(exam.id);
+    const action = resolveExamStartAction(exam, status, today, { section });
+    const isPast = section === "past" || isExamScheduledPast(exam, today);
+    const isToday = isExamScheduledToday(exam, today);
+
+    return (
+      <article
+        key={exam.id}
+        style={{
+          ...activeCardStyle,
+          ...(action.disabled ? activeCardMutedStyle : {}),
+          ...(isPast ? activeCardPastStyle : {}),
+        }}
+      >
+        <div style={activeCardBodyStyle}>
+          <h3 style={examTitleStyle}>{exam.title}</h3>
+          <div style={examMetaRowStyle}>
+            <span style={metaPillStyle}>{getExamSubjectSummary(exam)}</span>
+            <span style={metaTextStyle}>{getExamQuestionCount(exam)}문항</span>
+            <span style={metaTextStyle}>
+              시험일 {formatTestDate(exam.testDate)}
+            </span>
+            {isToday && <span style={todayBadgeStyle}>오늘</span>}
+            {isPast && <span style={pastBadgeStyle}>지난 시험</span>}
+            {status?.hasAttempt && !status?.complete && (
+              <span style={progressBadgeStyle}>응시 중</span>
+            )}
+            {status?.complete && section === "active" && (
+              <span style={completeBadgeStyle}>오답 완료</span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            handleStartExam(exam.id, { reviewMode: action.reviewMode })
+          }
+          disabled={action.disabled}
+          style={action.disabled ? completedBtnStyle : startBtnStyle}
+        >
+          {action.label}
+        </button>
+      </article>
+    );
+  };
 
   return (
     <div style={pageStyle}>
@@ -96,60 +150,43 @@ export default function StudentDashboard({
 
         <section style={sectionStyle}>
           <div style={sectionHeaderStyle}>
-            <h2 style={sectionTitleStyle}>오늘의 시험</h2>
+            <h2 style={sectionTitleStyle}>진행 중인 시험</h2>
             <span style={sectionBadgeStyle}>Active Tests</span>
           </div>
 
-          {availableExams.length === 0 ? (
+          {activeExams.length === 0 ? (
             <div style={emptyCardStyle}>
               <p style={emptyTextStyle}>
-                오늘 예정된 시험이 없습니다. 좋은 하루 보내세요! 👍
+                오늘·예정 시험이 없습니다. 아래 지난 시험에서 복습할 수 있습니다.
               </p>
             </div>
           ) : (
             <div style={activeListStyle}>
-              {availableExams.map((exam) => {
-                const status = examStatusById.get(exam.id);
-                const isComplete = Boolean(status?.complete);
-
-                return (
-                  <article
-                    key={exam.id}
-                    style={{
-                      ...activeCardStyle,
-                      ...(isComplete ? activeCardCompleteStyle : {}),
-                    }}
-                  >
-                    <div style={activeCardBodyStyle}>
-                      <h3 style={examTitleStyle}>{exam.title}</h3>
-                      <div style={examMetaRowStyle}>
-                        <span style={metaPillStyle}>{getExamSubjectSummary(exam)}</span>
-                        <span style={metaTextStyle}>
-                          {getExamQuestionCount(exam)}문항
-                        </span>
-                        {isComplete && (
-                          <span style={completeBadgeStyle}>오답 완료</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleStartExam(exam.id)}
-                      disabled={isComplete}
-                      style={isComplete ? completedBtnStyle : startBtnStyle}
-                    >
-                      {isComplete ? "완료됨" : "시험 시작하기"}
-                    </button>
-                  </article>
-                );
-              })}
+              {activeExams.map((exam) => renderExamCard(exam, "active"))}
             </div>
           )}
         </section>
 
         <section style={sectionStyle}>
           <div style={sectionHeaderStyle}>
-            <h2 style={sectionTitleStyle}>지난 시험 이력</h2>
+            <h2 style={sectionTitleStyle}>지난 시험 · 미응시 · 복습</h2>
+            <span style={sectionBadgePastStyle}>Past / Review</span>
+          </div>
+
+          {pastExams.length === 0 ? (
+            <div style={emptyCardStyle}>
+              <p style={emptyTextStyle}>지난 시험 목록이 없습니다.</p>
+            </div>
+          ) : (
+            <div style={activeListStyle}>
+              {pastExams.map((exam) => renderExamCard(exam, "past"))}
+            </div>
+          )}
+        </section>
+
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <h2 style={sectionTitleStyle}>시험 이력</h2>
             <span style={sectionBadgeMutedStyle}>Test History</span>
           </div>
 
@@ -162,46 +199,64 @@ export default function StudentDashboard({
               <table style={historyTableStyle}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>시험 날짜</th>
+                    <th style={thStyle}>제출 일시</th>
                     <th style={thStyle}>시험 제목</th>
+                    <th style={thStyle}>응시 구분</th>
                     <th style={thStyle}>점수</th>
                     <th style={{ ...thStyle, width: 180, textAlign: "right" }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {savedResults.map((result) => (
-                    <tr key={result.id}>
-                      <td style={tdStyle}>{formatDate(result.submittedAt)}</td>
-                      <td style={tdStyle}>
-                        <strong style={{ color: "#0f172a" }}>{result.testTitle}</strong>
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={scoreStyle}>
-                          {result.score} / {result.total}
-                        </span>
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <div style={historyActionRowStyle}>
-                          {Number(result.score) === 0 && (
+                  {savedResults.map((result) => {
+                    const statusLabel = formatSubmissionStatusLabel(result);
+                    const badgeStyle = getSubmissionStatusBadgeStyle(result);
+
+                    return (
+                      <tr key={result.id}>
+                        <td style={tdStyle}>{formatDate(result.submittedAt)}</td>
+                        <td style={tdStyle}>
+                          <strong style={{ color: "#0f172a" }}>
+                            {result.testTitle}
+                          </strong>
+                          {result.scheduledTestDate && (
+                            <div style={subMetaStyle}>
+                              시험일 {formatTestDate(result.scheduledTestDate)}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ ...statusBadgeStyle, ...badgeStyle }}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={scoreStyle}>
+                            {result.score} / {result.total}
+                          </span>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          <div style={historyActionRowStyle}>
+                            {Number(result.score) === 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteZeroScore(result)}
+                                style={deleteBtnStyle}
+                              >
+                                삭제
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleDeleteZeroScore(result)}
-                              style={deleteBtnStyle}
+                              onClick={() => onViewResult(result.id)}
+                              style={resultBtnStyle}
                             >
-                              삭제
+                              결과 보기
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => onViewResult(result.id)}
-                            style={resultBtnStyle}
-                          >
-                            결과 보기
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -251,6 +306,12 @@ const sectionBadgeStyle = {
   fontWeight: 700,
 };
 
+const sectionBadgePastStyle = {
+  ...sectionBadgeStyle,
+  background: "#ffedd5",
+  color: "#c2410c",
+};
+
 const sectionBadgeMutedStyle = {
   ...sectionBadgeStyle,
   background: "#f1f5f9",
@@ -290,6 +351,17 @@ const activeCardStyle = {
   padding: "22px 24px",
   boxShadow: "0 8px 24px rgba(37, 99, 235, 0.08)",
   border: "1px solid #dbeafe",
+};
+
+const activeCardMutedStyle = {
+  borderColor: "#e2e8f0",
+  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.04)",
+  background: "#f8fafc",
+};
+
+const activeCardPastStyle = {
+  borderColor: "#fed7aa",
+  boxShadow: "0 4px 16px rgba(234, 88, 12, 0.06)",
 };
 
 const activeCardBodyStyle = {
@@ -348,10 +420,31 @@ const completedBtnStyle = {
   opacity: 0.95,
 };
 
-const activeCardCompleteStyle = {
-  borderColor: "#e2e8f0",
-  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.04)",
-  background: "#f8fafc",
+const todayBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#dbeafe",
+  color: "#1d4ed8",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const pastBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#ffedd5",
+  color: "#c2410c",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const progressBadgeStyle = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#fef9c3",
+  color: "#a16207",
+  fontSize: 12,
+  fontWeight: 700,
 };
 
 const completeBadgeStyle = {
@@ -392,6 +485,20 @@ const tdStyle = {
   color: "#475569",
   borderBottom: "1px solid #f1f5f9",
   verticalAlign: "middle",
+};
+
+const subMetaStyle = {
+  marginTop: 4,
+  fontSize: 12,
+  color: "#94a3b8",
+};
+
+const statusBadgeStyle = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
 };
 
 const scoreStyle = {

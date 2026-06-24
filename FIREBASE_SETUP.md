@@ -48,6 +48,9 @@ service cloud.firestore {
     match /results/{document=**} {
       allow read, write: if true;
     }
+    match /examResults/{document=**} {
+      allow read, write: if true;
+    }
     match /users/{userId} {
       allow read, write: if true;
     }

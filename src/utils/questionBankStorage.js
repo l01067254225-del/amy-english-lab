@@ -398,6 +398,7 @@ export function addExamSet({
     title: title.trim(),
     targetLevel: String(targetLevel ?? "").trim(),
     testDate: String(testDate ?? "").trim(),
+    endDate: String(testDate ?? "").trim(),
     questionIds: preparedQuestions.map((q) => q.id),
     questions: preparedQuestions,
     createdAt: new Date().toISOString(),
@@ -430,6 +431,9 @@ export function updateExamSet(examId, updates) {
     title: String(updates.title ?? current.title).trim(),
     targetLevel: String(updates.targetLevel ?? current.targetLevel ?? "").trim(),
     testDate: String(updates.testDate ?? current.testDate ?? "").trim(),
+    endDate: String(
+      updates.endDate ?? updates.testDate ?? current.endDate ?? current.testDate ?? ""
+    ).trim(),
     questionIds: questions.map((question) => question.id),
     questions,
     setSource: updates.setSource ?? null,
@@ -461,13 +465,11 @@ export function filterQuestionsByLevel(questions, targetLevel) {
 
 export function getAvailableExamsForStudent(level, date = getTodayDateString()) {
   const studentLevel = String(level ?? "").trim();
-  const today = String(date ?? "").trim();
-  if (!studentLevel || !today) return [];
+  if (!studentLevel) return [];
 
   return loadExamSets().filter(
     (exam) =>
       exam?.targetLevel === studentLevel &&
-      exam?.testDate === today &&
       ensureArray(exam?.questions).length > 0
   );
 }

@@ -490,7 +490,7 @@ export default function TeacherExamBuilderTab() {
                   <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
                     {exam.questions.length}문항이 생성되었습니다.
                     {deployment.isDeployed
-                      ? ` · 학생 응시 ${deployment.submissionCount}건`
+                      ? ` · 응시 ${deployment.submissionCount}건 (정규 ${deployment.regularCount} · 기한 후 ${deployment.lateCount} · 복습 ${deployment.reviewCount})`
                       : ""}
                   </p>
                   <div style={examCardActionsStyle}>

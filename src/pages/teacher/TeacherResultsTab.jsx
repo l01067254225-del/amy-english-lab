@@ -5,6 +5,10 @@ import TeacherResultDetailModal from "../../components/TeacherResultDetailModal"
 import { fetchResultDetailByStudentDate } from "../../services/resultsApi";
 import { countIncorrectAnswers } from "../../utils/incorrectAnswerClinic";
 import {
+  formatSubmissionStatusLabel,
+  getSubmissionStatusBadgeStyle,
+} from "../../utils/examSubmissionMeta";
+import {
   buildDailySmsText,
   copyTextToClipboard,
   getResultDateKey,
@@ -32,6 +36,7 @@ export default function TeacherResultsTab({
   onClearAll,
 }) {
   const [levelFilter, setLevelFilter] = useState("all");
+  const [submissionFilter, setSubmissionFilter] = useState("all");
   const [nameQuery, setNameQuery] = useState("");
   const [printTarget, setPrintTarget] = useState(null);
   const [incorrectTarget, setIncorrectTarget] = useState(null);
@@ -72,13 +77,25 @@ export default function TeacherResultsTab({
     const query = nameQuery.trim().toLowerCase();
     return registryRows.filter((row) => {
       if (levelFilter !== "all" && row.level !== levelFilter) return false;
+
+      if (submissionFilter === "regular") {
+        if (row.isLateSubmission || row.isReview) return false;
+        if (row.submissionStatus && row.submissionStatus !== "regular") return false;
+      } else if (submissionFilter === "late") {
+        if (!(row.isLateSubmission || row.submissionStatus === "late_submission")) {
+          return false;
+        }
+      } else if (submissionFilter === "review") {
+        if (!(row.isReview || row.submissionStatus === "review")) return false;
+      }
+
       if (!query) return true;
       return (
         String(row.studentName ?? "").toLowerCase().includes(query) ||
         String(row.studentId ?? "").toLowerCase().includes(query)
       );
     });
-  }, [registryRows, levelFilter, nameQuery]);
+  }, [registryRows, levelFilter, submissionFilter, nameQuery]);
 
   const printRow = printTarget
     ? registryRows.find((row) => row.id === printTarget.id) ?? printTarget
@@ -194,6 +211,20 @@ export default function TeacherResultsTab({
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14, fontWeight: 700, color: "#334155" }}>
+            응시 구분
+            <select
+              value={submissionFilter}
+              onChange={(e) => setSubmissionFilter(e.target.value)}
+              style={{ ...inputStyle, marginTop: 0 }}
+            >
+              <option value="all">전체 (정규·기한 후·복습)</option>
+              <option value="regular">정규 응시</option>
+              <option value="late">기한 후 응시</option>
+              <option value="review">복습 응시</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14, fontWeight: 700, color: "#334155" }}>
             학생 이름 검색
             <input
               type="search"
@@ -207,7 +238,9 @@ export default function TeacherResultsTab({
 
         <p style={{ margin: "0 0 12px", fontSize: 14, color: "#64748b" }}>
           총 {filteredRows.length}건
-          {levelFilter !== "all" || nameQuery.trim() ? " (필터 적용됨)" : ""}
+          {levelFilter !== "all" || submissionFilter !== "all" || nameQuery.trim()
+            ? " (필터 적용됨)"
+            : ""}
         </p>
 
         {safeResults.length === 0 ? (
@@ -224,12 +257,17 @@ export default function TeacherResultsTab({
                   <th style={thTdStyle}>레벨</th>
                   <th style={thTdStyle}>시험 제목</th>
                   <th style={thTdStyle}>과목</th>
+                  <th style={thTdStyle}>응시 구분</th>
                   <th style={thTdStyle}>점수 / 만점</th>
                   <th style={{ ...thTdStyle, textAlign: "right", minWidth: 380 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row) => (
+                {filteredRows.map((row) => {
+                  const statusLabel = formatSubmissionStatusLabel(row);
+                  const badgeStyle = getSubmissionStatusBadgeStyle(row);
+
+                  return (
                   <tr
                     key={row.id}
                     onClick={() => setDetailTarget(row)}
@@ -245,6 +283,11 @@ export default function TeacherResultsTab({
                     </td>
                     <td style={thTdStyle}>{row.testTitle}</td>
                     <td style={thTdStyle}>{row.subject}</td>
+                    <td style={thTdStyle}>
+                      <span style={{ ...submissionBadgeStyle, ...badgeStyle }}>
+                        {statusLabel}
+                      </span>
+                    </td>
                     <td style={thTdStyle}>
                       <span style={scoreHighlightStyle}>
                         {row.score} / {row.total}
@@ -297,7 +340,8 @@ export default function TeacherResultsTab({
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -341,6 +385,15 @@ const levelBadgeStyle = {
   color: "#2563eb",
   fontSize: 12,
   fontWeight: 700,
+};
+
+const submissionBadgeStyle = {
+  display: "inline-flex",
+  padding: "3px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
 };
 
 const scoreHighlightStyle = {

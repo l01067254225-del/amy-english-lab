@@ -20,6 +20,7 @@ export default function StudentGate({ onBack }) {
   const [activeExamId, setActiveExamId] = useState(initialGate.activeExamId);
   const [activeResultId, setActiveResultId] = useState(initialGate.activeResultId);
   const [retestResultId, setRetestResultId] = useState(initialGate.retestResultId);
+  const [examReviewMode, setExamReviewMode] = useState(initialGate.examReviewMode);
 
   useEffect(() => {
     setSession(getStudentSession());
@@ -70,8 +71,9 @@ export default function StudentGate({ onBack }) {
       activeExamId,
       activeResultId,
       retestResultId,
+      examReviewMode,
     });
-  }, [view, activeExamId, activeResultId, retestResultId, sessionReady, session]);
+  }, [view, activeExamId, activeResultId, retestResultId, examReviewMode, sessionReady, session]);
 
   const handleLogout = () => {
     clearStudentSession();
@@ -118,19 +120,23 @@ export default function StudentGate({ onBack }) {
         examId={activeExamId}
         isRetest={Boolean(retestResultId)}
         retestResultId={retestResultId}
+        isReviewMode={examReviewMode}
         onBack={() => {
           if (retestResultId) {
             setActiveExamId(null);
+            setExamReviewMode(false);
             setView("result");
             return;
           }
           setActiveExamId(null);
           setRetestResultId(null);
+          setExamReviewMode(false);
           setView("dashboard");
         }}
         onSubmitted={(resultId) => {
           setActiveResultId(resultId);
           setRetestResultId(null);
+          setExamReviewMode(false);
           setView("result");
         }}
         onLogout={handleLogout}
@@ -162,12 +168,13 @@ export default function StudentGate({ onBack }) {
     <StudentDashboard
       student={session}
       onLogout={handleLogout}
-      onStartExam={async (examId) => {
+      onStartExam={async (examId, { reviewMode = false } = {}) => {
         const all = await fetchAllResults();
-        if (isExamStartBlocked(examId, all, session.id)) {
+        if (isExamStartBlocked(examId, all, session.id, { allowReview: reviewMode })) {
           return;
         }
         setRetestResultId(null);
+        setExamReviewMode(Boolean(reviewMode));
         setActiveExamId(examId);
         setView("exam");
       }}

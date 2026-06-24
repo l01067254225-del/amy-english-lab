@@ -6,16 +6,32 @@ import {
   validateResultSubmission,
 } from "../utils/examSubmissionValidation";
 import { ensureArray } from "../utils/safeData";
+import { isFirebaseConfigured } from "../firebase";
+import {
+  isExamResultsFirebaseReady,
+  syncExamResultToFirebase,
+} from "./examResultsApi";
 
 export { formatDate } from "../utils/resultsStorage";
 export { ExamSubmissionValidationError } from "../utils/examSubmissionValidation";
 
 export function isFirebaseReady() {
-  return false;
+  return isExamResultsFirebaseReady();
 }
 
 export function getSyncMode() {
-  return "local";
+  return isFirebaseConfigured() ? "cloud" : "local";
+}
+
+async function persistResultLocally(prepared, { replaceId = null } = {}) {
+  if (replaceId) {
+    localStorageApi.replaceResult(replaceId, prepared);
+  } else {
+    localStorageApi.saveResult(prepared);
+  }
+
+  void syncExamResultToFirebase(prepared);
+  return localStorageApi.loadResults({ writeBack: false });
 }
 
 export async function fetchAllResults({ cache = "no-store" } = {}) {
@@ -28,8 +44,7 @@ export async function replaceResult(resultId, record) {
   const prepared = enrichResultRecordForSave({ ...record, id: resultId });
   validateResultSubmission(prepared);
 
-  localStorageApi.replaceResult(resultId, prepared);
-  return localStorageApi.loadResults({ writeBack: false });
+  return persistResultLocally(prepared, { replaceId: resultId });
 }
 
 export async function saveResult(record) {
@@ -39,8 +54,7 @@ export async function saveResult(record) {
   });
   validateResultSubmission(prepared);
 
-  localStorageApi.saveResult(prepared);
-  return localStorageApi.loadResults({ writeBack: false });
+  return persistResultLocally(prepared);
 }
 
 export async function deleteResult(resultId) {

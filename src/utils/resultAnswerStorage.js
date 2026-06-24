@@ -184,6 +184,11 @@ export function enrichResultRecordForSave(record) {
     responses: normalizedAnswers,
     userResponses: normalizedAnswers,
     studentAnswers: normalizedAnswers,
+    scheduledTestDate: String(record.scheduledTestDate ?? "").trim(),
+    endDate: String(record.endDate ?? "").trim(),
+    submissionStatus: String(record.submissionStatus ?? "regular").trim() || "regular",
+    isReview: Boolean(record.isReview),
+    isLateSubmission: Boolean(record.isLateSubmission),
   });
 }
 

@@ -42,6 +42,7 @@ export function getStudentExamStatus(examId, results, studentKey) {
   };
 }
 
-export function isExamStartBlocked(examId, results, studentKey) {
+export function isExamStartBlocked(examId, results, studentKey, { allowReview = false } = {}) {
+  if (allowReview) return false;
   return getStudentExamStatus(examId, results, studentKey).complete;
 }
