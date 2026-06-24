@@ -25,6 +25,7 @@ import {
 import { gradeQuestion } from "../../utils/grade";
 import { formatTestDate } from "../../utils/levels";
 import { buildExamSubmissionMeta } from "../../utils/examSubmissionMeta";
+import { rewardExamPerfectScore } from "../../services/pointsApi";
 import { loadExamSets } from "../../utils/questionBankStorage";
 import { ensureArray } from "../../utils/safeData";
 import { resolveExamSubject } from "../../utils/examSetBuilder";
@@ -296,6 +297,9 @@ export default function StudentExamTake({
       const targetId = isRetest && retestResultId ? retestResultId : mine[0]?.id;
       setSubmitted(true);
       clearExamDraft(studentKey, examId);
+      if (total > 0 && score === total && targetId) {
+        void rewardExamPerfectScore(studentKey, targetId);
+      }
       if (targetId) {
         onSubmitted?.(targetId);
       }

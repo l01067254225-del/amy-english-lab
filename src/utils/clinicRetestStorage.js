@@ -1,6 +1,7 @@
 import { gradeQuestion } from "./grade";
 import { replaceResult } from "./resultsStorage";
 import { ensureArray } from "./safeData";
+import { completeIncorrectNotes } from "../services/pointsApi";
 import {
   appendTestAttemptToResult,
   ATTEMPT_TYPES,
@@ -196,6 +197,11 @@ export function saveClinicRetestResult(result, items, answers) {
   );
 
   replaceResult(result.id, persisted);
+
+  if (isClinicRetestAllCorrect(persisted)) {
+    void completeIncorrectNotes(persisted);
+  }
+
   return persisted;
 }
 

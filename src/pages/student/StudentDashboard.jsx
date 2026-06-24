@@ -145,6 +145,7 @@ export default function StudentDashboard({
         <SiteHeader
           title="AMY ENGLISH LAB"
           subtitle={`${greeting} · ${formatTestDate(today)}`}
+          points={Number(student?.points) || 0}
           onLogout={onLogout}
         />
 

@@ -10,6 +10,7 @@ function readSessionFrom(storage) {
       id: String(parsed.id).trim(),
       name: String(parsed.name ?? parsed.id).trim(),
       level: String(parsed.level ?? "").trim(),
+      points: Number(parsed.points) || 0,
     };
   } catch {
     return null;
@@ -35,6 +36,7 @@ export function setStudentSession(student) {
     id: student.id,
     name: student.name,
     level: student.level ?? "",
+    points: Number(student.points) || 0,
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
   sessionStorage.removeItem(SESSION_KEY);

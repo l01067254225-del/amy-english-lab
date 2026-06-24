@@ -1,5 +1,6 @@
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { getFirestoreDb, isFirebaseConfigured } from "../firebase";
+import { normalizePoints, loadLocalStudentPoints } from "../utils/pointsStorage";
 import {
   STUDENTS_STORAGE_KEY,
   findStudentByLoginId,
@@ -12,15 +13,30 @@ export function isStudentsFirebaseReady() {
   return Boolean(getFirestoreDb());
 }
 
+function mapUserDoc(data, loginId) {
+  return {
+    id: String(data?.id ?? loginId).trim(),
+    uid: String(data?.uid ?? "").trim(),
+    name: String(data?.name ?? loginId).trim(),
+    level: String(data?.level ?? "").trim(),
+    school: String(data?.school ?? "").trim(),
+    grade: String(data?.grade ?? "").trim(),
+    points: normalizePoints(data?.points ?? loadLocalStudentPoints(loginId)),
+    updatedAt: data?.updatedAt,
+  };
+}
+
 export function studentToUserDoc(student) {
   if (!student) return null;
+  const loginId = String(student.id ?? "").trim();
   return {
-    id: String(student.id ?? "").trim(),
+    id: loginId,
     uid: String(student.uid ?? "").trim(),
     name: String(student.name ?? student.id ?? "").trim(),
     level: String(student.level ?? "").trim(),
     school: String(student.school ?? "").trim(),
     grade: String(student.grade ?? "").trim(),
+    points: loadLocalStudentPoints(loginId),
     updatedAt: student.updatedAt || new Date().toISOString(),
   };
 }
@@ -40,7 +56,11 @@ export async function upsertStudentUser(student) {
   if (!ref) return false;
 
   try {
+    const existing = await getDoc(ref);
     await setDoc(ref, payload, { merge: true });
+    if (!existing.exists() || existing.data()?.points == null) {
+      await setDoc(ref, { points: 0 }, { merge: true });
+    }
     return true;
   } catch (error) {
     console.error("Failed to upsert student user:", error);
@@ -57,16 +77,7 @@ export async function fetchStudentUser(studentLoginId) {
     try {
       const snapshot = await getDoc(ref);
       if (snapshot.exists()) {
-        const data = snapshot.data();
-        return {
-          id: String(data.id ?? loginId).trim(),
-          uid: String(data.uid ?? "").trim(),
-          name: String(data.name ?? loginId).trim(),
-          level: String(data.level ?? "").trim(),
-          school: String(data.school ?? "").trim(),
-          grade: String(data.grade ?? "").trim(),
-          updatedAt: data.updatedAt,
-        };
+        return mapUserDoc(snapshot.data(), loginId);
       }
     } catch (error) {
       console.error("Failed to fetch student user:", error);
@@ -101,7 +112,7 @@ export function subscribeStudentUser(studentLoginId, onUpdate) {
 
   const emit = (profile) => {
     if (!profile?.id) return;
-    const key = `${profile.level}|${profile.name}|${profile.updatedAt ?? ""}`;
+    const key = `${profile.level}|${profile.name}|${profile.points}|${profile.updatedAt ?? ""}`;
     if (key === lastKey) return;
     lastKey = key;
     onUpdate(profile);
@@ -128,6 +139,16 @@ export function subscribeStudentUser(studentLoginId, onUpdate) {
     window.removeEventListener("amy-students-updated", onStudentsUpdated)
   );
 
+  const onPointsUpdated = (event) => {
+    if (!event?.detail?.studentId || event.detail.studentId === loginId) {
+      syncLocal();
+    }
+  };
+  window.addEventListener("amy-points-updated", onPointsUpdated);
+  cleanups.push(() =>
+    window.removeEventListener("amy-points-updated", onPointsUpdated)
+  );
+
   const ref = getUserDocRef(loginId);
   if (ref) {
     const unsubSnapshot = onSnapshot(
@@ -137,16 +158,7 @@ export function subscribeStudentUser(studentLoginId, onUpdate) {
           syncLocal();
           return;
         }
-        const data = snapshot.data();
-        emit({
-          id: String(data.id ?? loginId).trim(),
-          uid: String(data.uid ?? "").trim(),
-          name: String(data.name ?? loginId).trim(),
-          level: String(data.level ?? "").trim(),
-          school: String(data.school ?? "").trim(),
-          grade: String(data.grade ?? "").trim(),
-          updatedAt: data.updatedAt,
-        });
+        emit(mapUserDoc(snapshot.data(), loginId));
       },
       (error) => {
         console.error("Student user snapshot error:", error);

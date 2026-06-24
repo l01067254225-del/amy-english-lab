@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAllResults } from "../services/resultsApi";
 import { subscribeStudentUser } from "../services/studentsApi";
+import { subscribeStudentPoints } from "../services/pointsApi";
 import { getStudentSession, setStudentSession, clearStudentSession } from "../utils/studentAuth";
 import {
   clearStudentGateState,
@@ -39,12 +40,14 @@ export default function StudentGate({ onBack }) {
         id: studentId,
         name: String(profile.name ?? studentId).trim(),
         level: String(profile.level ?? "").trim(),
+        points: Number(profile.points) || 0,
       };
 
       setSession((prev) => {
         if (
           prev?.level === nextSession.level &&
-          prev?.name === nextSession.name
+          prev?.name === nextSession.name &&
+          prev?.points === nextSession.points
         ) {
           return prev;
         }
@@ -55,6 +58,22 @@ export default function StudentGate({ onBack }) {
 
     const unsubscribe = subscribeStudentUser(studentId, applyProfile);
     return unsubscribe;
+  }, [sessionReady, session?.id]);
+
+  useEffect(() => {
+    if (!sessionReady || !session?.id) return;
+
+    const studentId = session.id;
+    const unsubscribePoints = subscribeStudentPoints(studentId, (points) => {
+      setSession((prev) => {
+        if (!prev || prev.id !== studentId || prev.points === points) return prev;
+        const nextSession = { ...prev, points };
+        setStudentSession(nextSession);
+        return nextSession;
+      });
+    });
+
+    return unsubscribePoints;
   }, [sessionReady, session?.id]);
 
   useEffect(() => {

@@ -1,4 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  adjustPointsByAdmin,
+  fetchStudentPoints,
+  formatPointsDisplay,
+} from "../../services/pointsApi";
 import { upsertStudentUser } from "../../services/studentsApi";
 import {
   addStudent,
@@ -26,6 +31,11 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
   const [editingUid, setEditingUid] = useState(null);
   const [formError, setFormError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [pointBalance, setPointBalance] = useState(0);
+  const [pointDelta, setPointDelta] = useState("");
+  const [pointReason, setPointReason] = useState("");
+  const [pointMessage, setPointMessage] = useState("");
+  const [pointLoading, setPointLoading] = useState(false);
 
   const syncStudents = (next, { changedStudent = null, skipFirebase = false } = {}) => {
     setStudents(next);
@@ -57,7 +67,28 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
     setForm(EMPTY_STUDENT_FORM);
     setEditingUid(null);
     setFormError("");
+    setPointBalance(0);
+    setPointDelta("");
+    setPointReason("");
+    setPointMessage("");
   };
+
+  useEffect(() => {
+    if (!form.id?.trim()) {
+      setPointBalance(0);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const points = await fetchStudentPoints(form.id.trim());
+      if (!cancelled) setPointBalance(points);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.id, editingUid]);
 
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -109,6 +140,42 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
       resetForm();
     } catch (error) {
       setFormError(error.message || "학생 정보를 저장하지 못했습니다.");
+    }
+  };
+
+  const handlePointAdjust = async () => {
+    if (!form.id?.trim()) {
+      setPointMessage("학생 아이디가 필요합니다.");
+      return;
+    }
+
+    const amount = Number(pointDelta);
+    if (!Number.isFinite(amount) || amount === 0) {
+      setPointMessage("지급(+)/차감(-)할 포인트 숫자를 입력해 주세요.");
+      return;
+    }
+
+    setPointLoading(true);
+    setPointMessage("");
+    try {
+      const result = await adjustPointsByAdmin(
+        form.id.trim(),
+        amount,
+        pointReason.trim() || undefined
+      );
+      if (!result.ok) {
+        setPointMessage(result.message || "포인트 처리에 실패했습니다.");
+        return;
+      }
+      setPointBalance(result.points);
+      setPointDelta("");
+      setPointReason("");
+      setPointMessage(result.message);
+    } catch (error) {
+      console.error(error);
+      setPointMessage("포인트 처리 중 오류가 발생했습니다.");
+    } finally {
+      setPointLoading(false);
     }
   };
 
@@ -165,6 +232,51 @@ export default function TeacherStudentManagementTab({ onStudentsChange }) {
             {editingUid ? "수정 완료" : "학생 등록"}
           </button>
         </form>
+
+        {editingUid && form.id && (
+          <div style={pointPanelStyle}>
+            <div style={pointPanelHeaderStyle}>
+              <h3 style={pointPanelTitleStyle}>포인트 관리</h3>
+              <span style={pointBalanceBadgeStyle}>
+                🪙 현재 {formatPointsDisplay(pointBalance)}
+              </span>
+            </div>
+            <p style={pointPanelDescStyle}>
+              {form.name} ({form.id}) 학생에게 포인트를 지급하거나 차감할 수 있습니다.
+            </p>
+            <div style={pointFormGridStyle}>
+              <label style={compactLabelStyle}>
+                변동 포인트 (+/-)
+                <input
+                  type="number"
+                  value={pointDelta}
+                  onChange={(e) => setPointDelta(e.target.value)}
+                  placeholder="예: 100 또는 -50"
+                  style={{ ...inputStyle, marginTop: 6 }}
+                />
+              </label>
+              <label style={compactLabelStyle}>
+                사유 (선택)
+                <input
+                  type="text"
+                  value={pointReason}
+                  onChange={(e) => setPointReason(e.target.value)}
+                  placeholder="예: 우수 학습 상"
+                  style={{ ...inputStyle, marginTop: 6 }}
+                />
+              </label>
+            </div>
+            {pointMessage && <p style={pointMessageStyle}>{pointMessage}</p>}
+            <button
+              type="button"
+              onClick={handlePointAdjust}
+              disabled={pointLoading}
+              style={{ ...btnPrimary, marginTop: 12 }}
+            >
+              {pointLoading ? "처리 중..." : "포인트 지급/차감"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section style={summaryCard}>
@@ -406,4 +518,61 @@ const editBtnStyle = {
   cursor: "pointer",
   fontWeight: 700,
   fontSize: 13,
+};
+
+const pointPanelStyle = {
+  marginTop: 20,
+  padding: 18,
+  borderRadius: 14,
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
+};
+
+const pointPanelHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 8,
+};
+
+const pointPanelTitleStyle = {
+  margin: 0,
+  fontSize: 17,
+  fontWeight: 800,
+  color: "#92400e",
+};
+
+const pointBalanceBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "6px 12px",
+  borderRadius: 999,
+  background: "white",
+  border: "1px solid #fbbf24",
+  color: "#92400e",
+  fontWeight: 800,
+  fontSize: 14,
+};
+
+const pointPanelDescStyle = {
+  margin: "0 0 12px",
+  color: "#a16207",
+  fontSize: 14,
+  lineHeight: 1.5,
+};
+
+const pointFormGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 16,
+};
+
+const pointMessageStyle = {
+  margin: "12px 0 0",
+  color: "#92400e",
+  fontSize: 14,
+  fontWeight: 600,
 };

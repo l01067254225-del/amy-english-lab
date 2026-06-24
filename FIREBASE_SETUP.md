@@ -53,6 +53,9 @@ service cloud.firestore {
     }
     match /users/{userId} {
       allow read, write: if true;
+      match /pointHistory/{historyId} {
+        allow read, write: if true;
+      }
     }
   }
 }

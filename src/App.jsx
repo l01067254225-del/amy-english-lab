@@ -47,6 +47,7 @@ export default function App() {
           ...student,
           name: remoteProfile.name || student.name,
           level: remoteProfile.level || student.level,
+          points: remoteProfile.points ?? 0,
         };
       }
     } catch (error) {
