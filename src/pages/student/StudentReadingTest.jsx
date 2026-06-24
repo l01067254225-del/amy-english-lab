@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
 import {
   getPassageNumberLabel,
@@ -9,20 +9,27 @@ export default function StudentReadingTest({
   passage,
   questions,
   answers,
+  currentIndex = 0,
+  onIndexChange,
   submitted,
   saving,
   onAnswer,
   onSubmit,
   onReset,
 }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-
   const total = questions.length;
-  const currentQuestion = questions[currentIndex];
+  const safeIndex = Math.min(Math.max(currentIndex, 0), Math.max(total - 1, 0));
+  const currentQuestion = questions[safeIndex];
   const userAnswer = answers[currentQuestion?.id] ?? "";
   const earned = submitted ? gradeQuestion(currentQuestion, userAnswer) : null;
-  const isFirst = currentIndex === 0;
-  const isLast = currentIndex === total - 1;
+  const isFirst = safeIndex === 0;
+  const isLast = safeIndex === total - 1;
+
+  const setCurrentIndex = (nextIndex) => {
+    const resolved =
+      typeof nextIndex === "function" ? nextIndex(safeIndex) : nextIndex;
+    onIndexChange?.(Math.min(Math.max(resolved, 0), Math.max(total - 1, 0)));
+  };
 
   const activePassage = useMemo(() => {
     const fromQuestion = resolvePassageForQuestion(currentQuestion);
@@ -33,10 +40,6 @@ export default function StudentReadingTest({
     () => getPassageNumberLabel(currentQuestion),
     [currentQuestion]
   );
-
-  useEffect(() => {
-    setCurrentIndex(0);
-  }, [questions.length]);
 
   if (!currentQuestion) {
     return (
@@ -61,7 +64,7 @@ export default function StudentReadingTest({
       <section style={questionPanelStyle}>
         <div style={questionTopBarStyle}>
           <span style={progressBadgeStyle}>
-            Question {currentIndex + 1} / {total}
+            Question {safeIndex + 1} / {total}
           </span>
           <div style={dotRowStyle}>
             {questions.map((question, index) => (
@@ -71,7 +74,7 @@ export default function StudentReadingTest({
                 onClick={() => setCurrentIndex(index)}
                 style={{
                   ...dotStyle,
-                  ...(index === currentIndex ? dotActiveStyle : {}),
+                  ...(index === safeIndex ? dotActiveStyle : {}),
                   ...(answers[question.id] ? dotAnsweredStyle : {}),
                 }}
                 title={`${index + 1}번`}
@@ -82,7 +85,7 @@ export default function StudentReadingTest({
 
         <div style={questionCardStyle}>
           <h2 style={questionPromptStyle}>
-            Q{currentIndex + 1}. {currentQuestion.prompt}
+            Q{safeIndex + 1}. {currentQuestion.prompt}
           </h2>
 
           {currentQuestion.type === "objective" && (

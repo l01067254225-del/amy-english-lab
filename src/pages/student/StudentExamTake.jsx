@@ -37,7 +37,7 @@ import {
 } from "../../utils/wrongAnswerHistory";
 
 const REFRESH_WARNING =
-  "지금 새로고침하면 시험 내용이 초기화될 수 있습니다. 정말 하시겠습니까?";
+  "시험 화면을 나가시겠습니까? 답안은 자동 저장되며, 다시 들어오면 이어서 풀 수 있습니다.";
 
 export default function StudentExamTake({
   student,
@@ -80,15 +80,32 @@ export default function StudentExamTake({
   const isReadingMode = examView?.mode === "reading";
   const isVocabMode = examView?.mode === "vocab";
 
-  const [answers, setAnswers] = useState(() => {
-    const draft = loadExamDraft(studentKey, examId);
-    return draft?.answers ?? {};
-  });
+  const [answers, setAnswers] = useState({});
+  const [readingIndex, setReadingIndex] = useState(0);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [startBlocked, setStartBlocked] = useState(false);
   const [retestPhase, setRetestPhase] = useState(() => (isRetest ? "review" : "exam"));
   const [previousResult, setPreviousResult] = useState(null);
+
+  useEffect(() => {
+    if (isRetest) {
+      setDraftRestored(true);
+      return;
+    }
+
+    const draft = loadExamDraft(studentKey, examId);
+    if (draft) {
+      if (draft.answers && Object.keys(draft.answers).length > 0) {
+        setAnswers(draft.answers);
+      }
+      if (Number.isFinite(draft.currentIndex)) {
+        setReadingIndex(draft.currentIndex);
+      }
+    }
+    setDraftRestored(true);
+  }, [studentKey, examId, isRetest]);
 
   useEffect(() => {
     if (!isRetest || !retestResultId) {
@@ -149,16 +166,61 @@ export default function StudentExamTake({
   }, [submitted]);
 
   useEffect(() => {
-    if (submitted) return;
-    saveExamDraft(studentKey, examId, answers);
-  }, [answers, examId, studentKey, submitted]);
+    if (submitted || !draftRestored) return;
+
+    const flushDraft = () => {
+      saveExamDraft(studentKey, examId, answers, {
+        currentIndex: isReadingMode ? readingIndex : null,
+      });
+    };
+
+    flushDraft();
+  }, [answers, readingIndex, examId, studentKey, submitted, draftRestored, isReadingMode]);
+
+  useEffect(() => {
+    if (submitted || !draftRestored) return;
+
+    const flushDraft = () => {
+      saveExamDraft(studentKey, examId, answers, {
+        currentIndex: isReadingMode ? readingIndex : null,
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+
+    window.addEventListener("pagehide", flushDraft);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", flushDraft);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [answers, readingIndex, examId, studentKey, submitted, draftRestored, isReadingMode]);
+
+  const persistDraft = (nextAnswers, nextIndex = readingIndex) => {
+    saveExamDraft(studentKey, examId, nextAnswers, {
+      currentIndex: isReadingMode ? nextIndex : null,
+    });
+  };
 
   const setAnswer = (qid, value) => {
-    setAnswers((prev) => ({ ...prev, [qid]: value }));
+    setAnswers((prev) => {
+      const next = { ...prev, [qid]: value };
+      persistDraft(next);
+      return next;
+    });
+  };
+
+  const handleReadingIndexChange = (nextIndex) => {
+    setReadingIndex(nextIndex);
+    persistDraft(answers, nextIndex);
   };
 
   const reset = () => {
     setAnswers({});
+    setReadingIndex(0);
     setSubmitted(false);
     clearExamDraft(studentKey, examId);
   };
@@ -290,6 +352,7 @@ export default function StudentExamTake({
               onStartExam={() => {
                 clearExamDraft(studentKey, examId);
                 setAnswers({});
+                setReadingIndex(0);
                 setRetestPhase("exam");
               }}
             />
@@ -323,6 +386,12 @@ export default function StudentExamTake({
           </p>
         )}
 
+        {!submitted && draftRestored && (
+          <p style={autosaveBannerStyle}>
+            💾 답안이 자동 저장됩니다. 창을 닫거나 새로고침해도 이어서 풀 수 있습니다.
+          </p>
+        )}
+
         {isReadingMode ? (
           <div
             style={{
@@ -337,6 +406,8 @@ export default function StudentExamTake({
               passage={examView.passage}
               questions={flatQuestions}
               answers={answers}
+              currentIndex={readingIndex}
+              onIndexChange={handleReadingIndexChange}
               submitted={submitted}
               saving={saving}
               onAnswer={setAnswer}
@@ -448,6 +519,18 @@ const retestBannerStyle = {
   fontSize: 14,
   fontWeight: 600,
   lineHeight: 1.6,
+};
+
+const autosaveBannerStyle = {
+  margin: "0 0 16px",
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1d4ed8",
+  fontSize: 13,
+  fontWeight: 600,
+  lineHeight: 1.5,
 };
 
 const loadingCardStyle = {
