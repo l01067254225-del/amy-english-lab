@@ -6,6 +6,7 @@ import {
 } from "../utils/incorrectAnswerClinic";
 import IncorrectAnswerNotePreview from "./IncorrectAnswerNotePreview";
 import { triggerIncorrectNotePrint } from "./IncorrectAnswerPrintSheet";
+import { getExamTimeRangeDisplay } from "../utils/examTimeFormat";
 import "../styles/incorrectAnswerPrint.css";
 
 const MODAL_PRINT_ROOT_ID = "incorrect-note-modal-print-root";
@@ -26,6 +27,7 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
   if (!result) return null;
 
   const submittedLabel = formatDate(result.submittedAt);
+  const examTimeRange = getExamTimeRangeDisplay(result);
 
   return (
     <>
@@ -51,6 +53,11 @@ export default function IncorrectAnswerNoteModal({ result, studentName, onClose 
             <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>
               {studentName} · {result.testTitle} · 틀린 문항 {incorrectCount}개
             </p>
+            {examTimeRange && (
+              <p style={{ margin: "4px 0 0", color: "#475569", fontSize: 13 }}>
+                응시 시간: {examTimeRange}
+              </p>
+            )}
           </div>
           <div style={actionRowStyle}>
             {incorrectCount > 0 && (

@@ -29,6 +29,7 @@ export function loadExamDraft(studentId, examId) {
       answers: sanitizeAnswers(parsed.answers),
       currentIndex: Number.isFinite(currentIndex) && currentIndex >= 0 ? currentIndex : 0,
       savedAt: parsed.savedAt ?? null,
+      startTime: typeof parsed.startTime === "string" ? parsed.startTime : null,
     };
   } catch (error) {
     console.warn("Failed to load exam draft:", error);
@@ -36,18 +37,28 @@ export function loadExamDraft(studentId, examId) {
   }
 }
 
-export function saveExamDraft(studentId, examId, answers, { currentIndex = null } = {}) {
+export function saveExamDraft(
+  studentId,
+  examId,
+  answers,
+  { currentIndex = null, startTime = undefined } = {}
+) {
   const key = buildExamDraftKey(studentId, examId);
   if (!key.endsWith(`:${String(examId ?? "").trim()}`) || !String(studentId ?? "").trim()) {
     return false;
   }
 
   try {
+    const existing = loadExamDraft(studentId, examId);
+    const resolvedStartTime =
+      startTime !== undefined ? startTime : (existing?.startTime ?? null);
+
     const payload = {
       examId: String(examId ?? "").trim(),
       studentId: String(studentId ?? "").trim(),
       answers: sanitizeAnswers(answers),
       savedAt: new Date().toISOString(),
+      ...(resolvedStartTime ? { startTime: resolvedStartTime } : {}),
     };
 
     if (currentIndex != null && Number.isFinite(Number(currentIndex))) {

@@ -189,6 +189,10 @@ export function enrichResultRecordForSave(record) {
     submissionStatus: String(record.submissionStatus ?? "regular").trim() || "regular",
     isReview: Boolean(record.isReview),
     isLateSubmission: Boolean(record.isLateSubmission),
+    startTime: record.startTime ?? null,
+    endTime: record.endTime ?? null,
+    startTimeLabel: record.startTimeLabel ?? null,
+    endTimeLabel: record.endTimeLabel ?? null,
   });
 }
 

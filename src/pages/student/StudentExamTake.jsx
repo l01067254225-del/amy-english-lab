@@ -32,6 +32,10 @@ import { resolveExamSubject } from "../../utils/examSetBuilder";
 import { sortReadingQuestions } from "../../utils/readingQuestionOrder";
 import { shuffleArray } from "../../utils/shuffle";
 import {
+  buildExamTimingFields,
+  captureExamTimestamp,
+} from "../../utils/examTimeFormat";
+import {
   appendTestAttemptToResult,
   ATTEMPT_TYPES,
   syncWrongAnswerHistoryOnResult,
@@ -89,6 +93,7 @@ export default function StudentExamTake({
   const [startBlocked, setStartBlocked] = useState(false);
   const [retestPhase, setRetestPhase] = useState(() => (isRetest ? "review" : "exam"));
   const [previousResult, setPreviousResult] = useState(null);
+  const [examStartTime, setExamStartTime] = useState(null);
 
   useEffect(() => {
     if (isRetest) {
@@ -97,6 +102,9 @@ export default function StudentExamTake({
     }
 
     const draft = loadExamDraft(studentKey, examId);
+    const startTime = draft?.startTime ?? captureExamTimestamp();
+    setExamStartTime(startTime);
+
     if (draft) {
       if (draft.answers && Object.keys(draft.answers).length > 0) {
         setAnswers(draft.answers);
@@ -105,8 +113,31 @@ export default function StudentExamTake({
         setReadingIndex(draft.currentIndex);
       }
     }
+
+    if (!draft?.startTime) {
+      saveExamDraft(studentKey, examId, draft?.answers ?? {}, {
+        currentIndex: draft?.currentIndex ?? 0,
+        startTime,
+      });
+    }
+
     setDraftRestored(true);
   }, [studentKey, examId, isRetest]);
+
+  useEffect(() => {
+    if (!isRetest || retestPhase !== "exam") return;
+
+    const draft = loadExamDraft(studentKey, examId);
+    const startTime = draft?.startTime ?? captureExamTimestamp();
+    setExamStartTime(startTime);
+
+    if (!draft?.startTime) {
+      saveExamDraft(studentKey, examId, draft?.answers ?? {}, {
+        currentIndex: draft?.currentIndex ?? 0,
+        startTime,
+      });
+    }
+  }, [isRetest, retestPhase, studentKey, examId]);
 
   useEffect(() => {
     if (!isRetest || !retestResultId) {
@@ -172,11 +203,21 @@ export default function StudentExamTake({
     const flushDraft = () => {
       saveExamDraft(studentKey, examId, answers, {
         currentIndex: isReadingMode ? readingIndex : null,
+        startTime: examStartTime,
       });
     };
 
     flushDraft();
-  }, [answers, readingIndex, examId, studentKey, submitted, draftRestored, isReadingMode]);
+  }, [
+    answers,
+    readingIndex,
+    examId,
+    studentKey,
+    submitted,
+    draftRestored,
+    isReadingMode,
+    examStartTime,
+  ]);
 
   useEffect(() => {
     if (submitted || !draftRestored) return;
@@ -184,6 +225,7 @@ export default function StudentExamTake({
     const flushDraft = () => {
       saveExamDraft(studentKey, examId, answers, {
         currentIndex: isReadingMode ? readingIndex : null,
+        startTime: examStartTime,
       });
     };
 
@@ -198,11 +240,21 @@ export default function StudentExamTake({
       window.removeEventListener("pagehide", flushDraft);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [answers, readingIndex, examId, studentKey, submitted, draftRestored, isReadingMode]);
+  }, [
+    answers,
+    readingIndex,
+    examId,
+    studentKey,
+    submitted,
+    draftRestored,
+    isReadingMode,
+    examStartTime,
+  ]);
 
   const persistDraft = (nextAnswers, nextIndex = readingIndex) => {
     saveExamDraft(studentKey, examId, nextAnswers, {
       currentIndex: isReadingMode ? nextIndex : null,
+      startTime: examStartTime,
     });
   };
 
@@ -254,6 +306,11 @@ export default function StudentExamTake({
       submittedAt: new Date().toISOString(),
     });
 
+    const resolvedStartTime =
+      examStartTime ?? loadExamDraft(studentKey, examId)?.startTime ?? captureExamTimestamp();
+    const endTimeIso = captureExamTimestamp();
+    const timingFields = buildExamTimingFields(resolvedStartTime, endTimeIso);
+
     const baseRecord = {
       studentId: studentKey,
       studentName: student.name || studentKey,
@@ -261,9 +318,10 @@ export default function StudentExamTake({
       testTitle: exam.title,
       score,
       total,
-      submittedAt: new Date().toISOString(),
+      submittedAt: endTimeIso,
       details,
       ...submissionMeta,
+      ...timingFields,
     };
 
     setSaving(true);
@@ -354,9 +412,12 @@ export default function StudentExamTake({
               mode="inline"
               showStartButton
               onStartExam={() => {
+                const startTime = captureExamTimestamp();
                 clearExamDraft(studentKey, examId);
+                setExamStartTime(startTime);
                 setAnswers({});
                 setReadingIndex(0);
+                saveExamDraft(studentKey, examId, {}, { currentIndex: 0, startTime });
                 setRetestPhase("exam");
               }}
             />

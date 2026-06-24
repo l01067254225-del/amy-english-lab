@@ -13,6 +13,7 @@ import { getStudentLevel } from "../../utils/levelStats";
 import { SUBJECT_SMS_LABELS } from "../../utils/scoreAnalytics";
 import { ensureArray } from "../../utils/safeData";
 import { countRetestReviewItems } from "../../utils/examRetestStorage";
+import { getExamTimeRangeDisplay } from "../../utils/examTimeFormat";
 
 export default function StudentTestResult({
   student,
@@ -65,6 +66,8 @@ export default function StudentTestResult({
     [result]
   );
 
+  const examTimeRange = useMemo(() => getExamTimeRangeDisplay(result), [result]);
+
   const handleRetest = () => {
     if (!result?.testId) return;
     onRetest?.(result.testId, result.id);
@@ -114,6 +117,11 @@ export default function StudentTestResult({
                   {formatDate(result.submittedAt)} · {result.score}/{result.total}점
                   {result.attemptCount > 1 ? ` · ${result.attemptCount}회차` : ""}
                 </p>
+                {examTimeRange && (
+                  <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 14 }}>
+                    응시 시간: {examTimeRange}
+                  </p>
+                )}
               </div>
               <div
                 style={{

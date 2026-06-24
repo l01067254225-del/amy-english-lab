@@ -3,6 +3,7 @@ import { fetchResultDetailByStudentDate, formatDate } from "../services/resultsA
 import { getResultDateKey } from "../utils/resultDetailLoader";
 import { buildAttemptWiseDetailView } from "../utils/resultDetailView";
 import { formatLevelLabel } from "../utils/levels";
+import { getExamTimeRangeDisplay } from "../utils/examTimeFormat";
 
 function ResultMark({ correct }) {
   if (correct == null) return null;
@@ -128,6 +129,7 @@ export default function TeacherResultDetailModal({
   }, [result, isLoading]);
 
   const { column, rows, isReady, hasRecovery } = detailView;
+  const examTimeRange = getExamTimeRangeDisplay(result ?? initialResult);
 
   if (!initialResult) return null;
 
@@ -172,6 +174,9 @@ export default function TeacherResultDetailModal({
             >
               DB 재조회
             </button>
+          )}
+          {examTimeRange && (
+            <span style={examTimeChipStyle}>응시 시간: {examTimeRange}</span>
           )}
         </div>
 
@@ -342,6 +347,13 @@ const dataSourceChipStyle = {
   background: "#eff6ff",
   border: "1px solid #bfdbfe",
   color: "#1d4ed8",
+};
+
+const examTimeChipStyle = {
+  ...summaryChipStyle,
+  background: "#f0fdf4",
+  border: "1px solid #bbf7d0",
+  color: "#166534",
 };
 
 const historyHintStyle = {

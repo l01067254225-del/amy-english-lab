@@ -19,6 +19,7 @@ import { formatDate } from "../../services/resultsApi";
 import { getSubjectSummaryForTestId } from "../../utils/examHelpers";
 import { LEVEL_OPTIONS, formatLevelLabel } from "../../utils/levels";
 import { ensureArray } from "../../utils/safeData";
+import { getExamTimeRangeDisplay } from "../../utils/examTimeFormat";
 import {
   btnSecondary,
   inputStyle,
@@ -258,6 +259,7 @@ export default function TeacherResultsTab({
                   <th style={thTdStyle}>시험 제목</th>
                   <th style={thTdStyle}>과목</th>
                   <th style={thTdStyle}>응시 구분</th>
+                  <th style={thTdStyle}>응시 시간</th>
                   <th style={thTdStyle}>점수 / 만점</th>
                   <th style={{ ...thTdStyle, textAlign: "right", minWidth: 380 }}></th>
                 </tr>
@@ -266,6 +268,7 @@ export default function TeacherResultsTab({
                 {filteredRows.map((row) => {
                   const statusLabel = formatSubmissionStatusLabel(row);
                   const badgeStyle = getSubmissionStatusBadgeStyle(row);
+                  const examTimeRange = getExamTimeRangeDisplay(row);
 
                   return (
                   <tr
@@ -287,6 +290,9 @@ export default function TeacherResultsTab({
                       <span style={{ ...submissionBadgeStyle, ...badgeStyle }}>
                         {statusLabel}
                       </span>
+                    </td>
+                    <td style={{ ...thTdStyle, fontSize: 13, color: "#475569", minWidth: 220 }}>
+                      {examTimeRange || "—"}
                     </td>
                     <td style={thTdStyle}>
                       <span style={scoreHighlightStyle}>
