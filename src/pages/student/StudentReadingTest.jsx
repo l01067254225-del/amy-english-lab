@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import AnswerClearButton from "../../components/AnswerClearButton";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
 import {
   getPassageNumberLabel,
@@ -119,14 +120,22 @@ export default function StudentReadingTest({
           )}
 
           {currentQuestion.type === "subjective" && (
-            <textarea
-              value={userAnswer}
-              disabled={submitted}
-              onChange={(e) => onAnswer(currentQuestion.id, e.target.value)}
-              placeholder="정답을 입력하세요"
-              rows={5}
-              style={textareaStyle}
-            />
+            <div style={subjectiveFieldRowStyle}>
+              <textarea
+                value={userAnswer}
+                disabled={submitted}
+                onChange={(e) => onAnswer(currentQuestion.id, e.target.value)}
+                placeholder="정답을 입력하세요"
+                rows={5}
+                style={{ ...textareaStyle, flex: 1, minWidth: 0, marginTop: 0 }}
+              />
+              {!submitted ? (
+                <AnswerClearButton
+                  disabled={!String(userAnswer ?? "").length}
+                  onClear={() => onAnswer(currentQuestion.id, "")}
+                />
+              ) : null}
+            </div>
           )}
 
           {currentQuestion.type === "fill" && (
@@ -399,6 +408,13 @@ const optionNumStyle = {
   fontWeight: 800,
   color: "#475569",
   flexShrink: 0,
+};
+
+const subjectiveFieldRowStyle = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-start",
+  marginTop: 4,
 };
 
 const textareaStyle = {

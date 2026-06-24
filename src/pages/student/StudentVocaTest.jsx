@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import AnswerClearButton from "../../components/AnswerClearButton";
 import { getAnswerFeedback, gradeQuestion } from "../../utils/grade";
 import { splitVocaExamSections, resolveVocaMeaningPrompt, resolveVocaSpellingPrompt } from "../../utils/vocaExamBuilder";
 
@@ -29,17 +30,25 @@ function VocaQuestionRow({ item, userAnswers, submitted, onAnswer, placeholder, 
       <div style={styles.questionLabel}>
         Q{number}. <span style={styles.promptText}>{promptText}</span>
       </div>
-      <input
-        type="text"
-        value={answer}
-        disabled={submitted}
-        onChange={(event) => onAnswer(question.id, event.target.value)}
-        placeholder={placeholder}
-        style={{
-          ...styles.input,
-          backgroundColor: submitted ? "#f1f5f9" : "#f8fafc",
-        }}
-      />
+      <div style={styles.inputRow}>
+        <input
+          type="text"
+          value={answer}
+          disabled={submitted}
+          onChange={(event) => onAnswer(question.id, event.target.value)}
+          placeholder={placeholder}
+          style={{
+            ...styles.input,
+            backgroundColor: submitted ? "#f1f5f9" : "#f8fafc",
+          }}
+        />
+        {!submitted ? (
+          <AnswerClearButton
+            disabled={!String(answer ?? "").length}
+            onClear={() => onAnswer(question.id, "")}
+          />
+        ) : null}
+      </div>
       {submitted ? (
         <p
           style={{
@@ -205,8 +214,14 @@ const styles = {
     fontSize: 20,
     fontWeight: 700,
   },
+  inputRow: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+  },
   input: {
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
     padding: "12px 14px",
     borderRadius: 12,
     border: "1px solid #e2e8f0",
